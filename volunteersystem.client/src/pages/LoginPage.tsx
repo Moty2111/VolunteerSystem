@@ -4,6 +4,7 @@ import { Eye, EyeOff, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { authApi } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function LoginPage() {
   const [loginName, setLoginName] = useState('');
@@ -25,7 +26,7 @@ export default function LoginPage() {
       navigate('/dashboard');
     } catch (err: unknown) {
       const e2 = err as { response?: { data?: { message?: string } } };
-      setError(e2.response?.data?.message || 'еверный логин или пароль');
+      setError(e2.response?.data?.message || 'Неверный логин или пароль');
     } finally {
       setLoading(false);
     }
@@ -37,23 +38,23 @@ export default function LoginPage() {
         <div className="auth-brand-inner">
           <div className="auth-brand-logo">
             <div className="mark">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 21V11" />
-                <path d="M12 12c-3.5 0-6-2.5-6-6 3.5 0 6 2.5 6 6z" />
-                <path d="M12 9c3.5 0 6-2.5 6-6-3.5 0-6 2.5-6 6z" />
-                <path d="M8 21h8" />
+              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 28C8 22 4 17 4 12.5A5.5 5.5 0 0 1 16 8a5.5 5.5 0 0 1 12 4.5C28 17 24 22 16 28z" fill="rgba(255,255,255,0.25)" stroke="currentColor" />
+                <path d="M16 22V13" />
+                <path d="M16 16c-2.5 0-4.5-2-4.5-4.5 2.5 0 4.5 2 4.5 4.5z" fill="currentColor" opacity="0.9" />
+                <path d="M16 14c2.5 0 4.5-2 4.5-4.5-2.5 0-4.5 2-4.5 4.5z" fill="currentColor" opacity="0.9" />
               </svg>
             </div>
             <div className="name">VolunteerSystem</div>
           </div>
 
           <h1 className="auth-brand-title">
-            омогать — просто. <br />
-            ы сделаем это удобным.
+            Помогать — просто. <br />
+            Мы сделаем это удобным.
           </h1>
           <p className="auth-brand-sub">
-            диная платформа для координации волонтёров, мероприятий и партнёрских программ.
-            розрачная отчётность, живые люди, реальная польза.
+            Единая платформа для координации волонтёров, мероприятий и партнёрских программ.
+            Прозрачная отчётность, живые люди, реальная польза.
           </p>
 
           <div className="auth-brand-stats">
@@ -74,6 +75,10 @@ export default function LoginPage() {
       </div>
 
       <div className="auth-form-side">
+        <div className="auth-theme-toggle">
+          <ThemeToggle />
+        </div>
+
         <motion.form
           onSubmit={handleSubmit}
           className="auth-card"
@@ -82,15 +87,15 @@ export default function LoginPage() {
           transition={{ duration: 0.35 }}
         >
           <h2 className="auth-card-title">
-            обро пожаловать
+            Добро пожаловать
             <Sparkles size={20} style={{ marginLeft: 8, color: 'var(--primary)', verticalAlign: 'middle' }} />
           </h2>
-          <p className="auth-card-sub">ойдите в свой аккаунт</p>
+          <p className="auth-card-sub">Войдите в свой аккаунт</p>
 
           {error && <div className="auth-alert error">{error}</div>}
 
           <div className="field">
-            <label className="field-label">огин</label>
+            <label className="field-label">Логин</label>
             <input
               className="input"
               value={loginName}
@@ -102,7 +107,7 @@ export default function LoginPage() {
           </div>
 
           <div className="field">
-            <label className="field-label">ароль</label>
+            <label className="field-label">Пароль</label>
             <div style={{ position: 'relative' }}>
               <input
                 type={showPw ? 'text' : 'password'}
@@ -118,6 +123,7 @@ export default function LoginPage() {
                 className="pw-toggle"
                 onClick={() => setShowPw(s => !s)}
                 tabIndex={-1}
+                aria-label={showPw ? 'Скрыть пароль' : 'Показать пароль'}
               >
                 {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -130,11 +136,11 @@ export default function LoginPage() {
             className="btn btn-primary"
             style={{ width: '100%', marginTop: 8 }}
           >
-            {loading ? <span className="spinner" /> : 'ойти'}
+            {loading ? <span className="spinner" /> : 'Войти'}
           </button>
 
           <p className="auth-footer">
-            ет аккаунта? <Link to="/register">арегистрироваться</Link>
+            Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
           </p>
         </motion.form>
       </div>

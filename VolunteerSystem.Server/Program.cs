@@ -68,7 +68,6 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1"
     });
 
-    // Кнопка Authorize в Swagger UI
     c.AddSecurityDefinition("bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -88,7 +87,24 @@ builder.Services.AddSwaggerGen(c =>
 var app = builder.Build();
 
 // ============================================================
-// 6. Pipeline
+// 6. АВТОСОЗДАНИЕ БД ПРИ ПЕРВОМ ЗАПУСКЕ
+// ============================================================
+using (var scope = app.Services.CreateScope())
+{
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        await DbInitializer.InitializeAsync(app.Configuration, logger);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Не удалось инициализировать БД");
+        throw;
+    }
+}
+
+// ============================================================
+// 7. Pipeline
 // ============================================================
 if (app.Environment.IsDevelopment())
 {

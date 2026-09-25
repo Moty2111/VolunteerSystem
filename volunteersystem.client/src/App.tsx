@@ -12,6 +12,7 @@ import MyAssignmentsPage from './pages/MyAssignmentsPage';
 import PartnersPage from './pages/PartnersPage';
 import ReportsPage from './pages/ReportsPage';
 import SkillsPage from './pages/SkillsPage';
+import ProfilePage from './pages/ProfilePage';
 
 export default function App() {
     return (
@@ -24,8 +25,9 @@ export default function App() {
                 < Route element = {< ProtectedRoute > <Layout /></ProtectedRoute >}>
                     <Route path="/dashboard" element = {< DashboardPage />} />
                         < Route path = "/events" element = {< EventsPage />} />
+                            < Route path = "/profile" element = {< ProfilePage />} />
 
-                            < Route path = "/volunteers" element = {
+                                < Route path = "/volunteers" element = {
               < ProtectedRoute allowedRoles = { ['Администратор', 'Менеджер']} >
     <VolunteersPage />
     </ProtectedRoute>

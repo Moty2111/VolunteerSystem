@@ -1,72 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-    PieChart, Pie, Cell, LineChart, Line
+    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line
 } from 'recharts';
 import { reportsApi } from '../api/reports';
 import { useToast } from '../components/Toast';
-import { Badge, EmptyState, Skeleton, Button } from '../components/ui';
+import { EmptyState, Skeleton } from '../components/ui';
 import { IllBarChart } from '../components/illustrations';
+import { exportCSV, exportExcel, exportWord, exportPDF } from '../utils/export';
 import {
-    BarChart3, Download, Search, Users, Clock, Briefcase, Award
+    BarChart3, Users, Clock, Award, Download, FileText, FileSpreadsheet, File, Search
 } from 'lucide-react';
 
 type Tab = 'summary' | 'rating' | 'partners' | 'hours' | 'audit';
 
-interface SummaryRow {
-    volunteer_id: number;
-    full_name: string;
-    city: string;
-    events_count: number;
-    total_hours: number;
-}
-
-interface RatingRow extends SummaryRow {
-    rating: number;
-}
-
-interface HoursRow {
-    full_name: string;
-    city: string;
-    events_count: number;
-    total_hours: number;
-}
-
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
-    { key: 'summary', label: 'Сводка', icon: <Users size={ 14} /> },
+    { key: 'summary', label: 'Сводка волонтёров', icon: <Users size={ 14} /> },
 { key: 'rating', label: 'Рейтинг', icon: <Award size={ 14 } /> },
-{ key: 'hours', label: 'Часы', icon: <Clock size={ 14 } /> },
-{ key: 'partners', label: 'Партнёры', icon: <Briefcase size={ 14 } /> },
-{ key: 'audit', label: 'Аудит', icon: <BarChart3 size={ 14 } /> }
+{ key: 'hours', label: 'Часы за период', icon: <Clock size={ 14 } /> },
+{ key: 'partners', label: 'Партнёры', icon: <BarChart3 size={ 14 } /> },
+{ key: 'audit', label: 'Аудит', icon: <FileText size={ 14 } /> }
 ];
-
-function toCSV(rows: Record<string, unknown>[]): string {
-    if (rows.length === 0) return '';
-    const headers = Object.keys(rows[0]);
-    const escape = (v: unknown) => {
-        const s = String(v ?? '');
-        return s.includes(',') || s.includes('"') || s.includes('\n')
-            ? `"${s.replace(/"/g, '""')}"`
-            : s;
-    };
-    const lines = [
-        headers.join(','),
-        ...rows.map(r => headers.map(h => escape(r[h])).join(','))
-    ];
-    return '\uFEFF' + lines.join('\n');
-}
-
-function downloadCSV(filename: string, rows: Record<string, unknown>[]) {
-    const csv = toCSV(rows);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-}
 
 const CHART_COLORS = ['#14a37f', '#4f7cff', '#ff7a59', '#a78bfa', '#f59e0b', '#06b6d4'];
 
@@ -76,8 +30,7 @@ export default function ReportsPage() {
     const [data, setData] = useState<Record<string, unknown>[]>([]);
     const [loading, setLoading] = useState(false);
     const [from, setFrom] = useState(() => {
-        const d = new Date();
-        d.setMonth(d.getMonth() - 6);
+        const d = new Date(); d.setMonth(d.getMonth() - 6);
         return d.toISOString().slice(0, 10);
     });
     const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
@@ -98,9 +51,7 @@ export default function ReportsPage() {
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Ошибка загрузки');
-        } finally {
-            setLoading(false);
-        }
+        } finally { setLoading(false); }
     };
 
     useEffect(() => { load(); }, [tab]);
@@ -117,30 +68,40 @@ export default function ReportsPage() {
         if (filtered.length === 0) return null;
         const hoursKey = Object.keys(filtered[0]).find(k => k.toLowerCase().includes('hours'));
         const eventsKey = Object.keys(filtered[0]).find(k => k.toLowerCase().includes('events'));
-        const totalHours = hoursKey
-            ? filtered.reduce((s, r) => s + Number(r[hoursKey] || 0), 0)
-            : 0;
-        const totalEvents = eventsKey
-            ? filtered.reduce((s, r) => s + Number(r[eventsKey] || 0), 0)
-            : 0;
+        const ratingKey = Object.keys(filtered[0]).find(k => k.toLowerCase() === 'rating');
+        const totalHours = hoursKey ? filtered.reduce((s, r) => s + Number(r[hoursKey] || 0), 0) : 0;
+        const totalEvents = eventsKey ? filtered.reduce((s, r) => s + Number(r[eventsKey] || 0), 0) : 0;
+        const avgRating = ratingKey ? filtered.reduce((s, r) => s + Number(r[ratingKey] || 0), 0) / filtered.length : 0;
         return {
             rows: filtered.length,
             totalHours,
             totalEvents,
-            avgHours: filtered.length ? totalHours / filtered.length : 0
+            avgHours: filtered.length ? totalHours / filtered.length : 0,
+            avgRating
         };
     }, [filtered]);
 
+    // Специфичные данные для графиков — разные для каждой вкладки
     const chartData = useMemo(() => {
-        if (tab === 'summary' || tab === 'rating') {
+        if (tab === 'summary') {
+            // Сводка: столбцы по часам топ-8
             return filtered
                 .map(r => ({
                     name: String(r.full_name || ''),
-                    hours: Number(r.total_hours || 0),
-                    events: Number(r.events_count || 0)
+                    hours: Number(r.total_hours || 0)
                 }))
                 .sort((a, b) => b.hours - a.hours)
                 .slice(0, 8);
+        }
+        if (tab === 'rating') {
+            // Рейтинг: линия с местами (топ-10 по rating, отображаем часы)
+            return filtered
+                .map(r => ({
+                    name: `#${r.rating} ${r.full_name}`,
+                    hours: Number(r.total_hours || 0),
+                    events: Number(r.events_count || 0)
+                }))
+                .slice(0, 10);
         }
         if (tab === 'partners') {
             return filtered.slice(0, 8).map(r => ({
@@ -151,14 +112,15 @@ export default function ReportsPage() {
         return [];
     }, [filtered, tab]);
 
-    const handleExport = () => {
-        if (filtered.length === 0) {
-            toast.info('Нет данных для экспорта');
-            return;
-        }
-        const filename = `volunteer-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
-        downloadCSV(filename, filtered);
-        toast.success('CSV скачан');
+    const handleExport = (format: 'csv' | 'excel' | 'word' | 'pdf') => {
+        if (filtered.length === 0) { toast.info('Нет данных для экспорта'); return; }
+        const filename = `volunteer-${tab}-${new Date().toISOString().slice(0, 10)}`;
+        const title = TABS.find(t => t.key === tab)?.label || 'Отчёт';
+        if (format === 'csv') exportCSV(filename, filtered);
+        else if (format === 'excel') exportExcel(filename, filtered);
+        else if (format === 'word') exportWord(filename, filtered, title);
+        else exportPDF(filtered, title);
+        toast.success(`Экспорт ${format.toUpperCase()} готов`);
     };
 
     const headers = filtered.length > 0 ? Object.keys(filtered[0]) : [];
@@ -168,41 +130,41 @@ export default function ReportsPage() {
         <div className= "page-header" >
         <div>
         <h1 className="page-title" > Отчёты </h1>
-            < p className = "page-subtitle" >
-                Аналитика по волонтёрам, мероприятиям и партнёрам
-                    </p>
-                    </div>
-                    < button className = "btn btn-secondary" onClick = { handleExport } disabled = { filtered.length === 0 } >
-                        <Download size={ 16 } /> Экспорт CSV
+            < p className = "page-subtitle" > Аналитика и выгрузки по данным организации </p>
+                </div>
+                < div style = {{ display: 'flex', gap: 8, flexWrap: 'wrap' }
+}>
+    <button className="btn btn-secondary btn-sm" onClick = {() => handleExport('csv')} disabled = {!filtered.length}>
+        <FileText size={ 14 } /> CSV
+            </button>
+            < button className = "btn btn-secondary btn-sm" onClick = {() => handleExport('excel')} disabled = {!filtered.length}>
+                <FileSpreadsheet size={ 14 } /> Excel
+                    </button>
+                    < button className = "btn btn-secondary btn-sm" onClick = {() => handleExport('word')} disabled = {!filtered.length}>
+                        <File size={ 14 } /> Word
                             </button>
-                            </div>
+                            < button className = "btn btn-secondary btn-sm" onClick = {() => handleExport('pdf')} disabled = {!filtered.length}>
+                                <Download size={ 14 } /> PDF
+                                    </button>
+                                    </div>
+                                    </div>
 
-    {/* TABS */ }
-    <div className="tabs" >
-    {
-        TABS.map(t => (
-            <button
-            key= { t.key }
-            className = {`tab ${tab === t.key ? 'active' : ''}`}
-    onClick = {() => setTab(t.key)
-}
-style = {{ display: 'flex', alignItems: 'center', gap: 6 }}
-          >
+                                    < div className = "tabs" >
+                                    {
+                                        TABS.map(t => (
+                                            <button key= { t.key } className = {`tab ${tab === t.key ? 'active' : ''}`}
+onClick = {() => setTab(t.key)}
+style = {{ display: 'flex', alignItems: 'center', gap: 6 }}>
 { t.icon } { t.label }
 </button>
         ))}
 </div>
 
-{/* FILTERS */ }
-<div className="filter-bar" >
-    <div className="input-icon-wrap" style = {{ minWidth: 280 }}>
-        <span className="input-icon" > <Search size={ 15 } /></span >
-            <input
-            className="input"
-placeholder = "Поиск по отчёту…"
-value = { search }
-onChange = { e => setSearch(e.target.value) }
-    />
+    < div className = "filter-bar" >
+        <div className="input-icon-wrap" style = {{ minWidth: 280 }}>
+            <span className="input-icon" > <Search size={ 15 } /></span >
+                <input className="input" placeholder = "Поиск…" value = { search }
+onChange = { e => setSearch(e.target.value) } />
     </div>
 {
     tab === 'hours' && (
@@ -219,7 +181,6 @@ onChange = { e => setSearch(e.target.value) }
 }
 </div>
 
-{/* KPI */ }
 {
     !loading && kpi && (
         <div className="stat-grid" style = {{ marginBottom: 20 }
@@ -271,7 +232,6 @@ onChange = { e => setSearch(e.target.value) }
 </div>
       )}
 
-{/* CHARTS */ }
 {
     !loading && chartData.length > 0 && (
         <div className="card" style = {{ marginBottom: 20 }
@@ -279,78 +239,66 @@ onChange = { e => setSearch(e.target.value) }
     <div className="card-header" >
         <h3 className="card-title" >
             <BarChart3 size={ 16 } />
-{ tab === 'partners' ? 'Суммы поддержки по партнёрам' : 'Топ-8 по показателю' }
+{ tab === 'summary' && 'Топ-8 волонтёров по часам' }
+{ tab === 'rating' && 'Рейтинг волонтёров (места)' }
+{ tab === 'partners' && 'Суммы поддержки по партнёрам' }
 </h3>
     </div>
-    < ResponsiveContainer width = "100%" height = { 260} >
+    < ResponsiveContainer width = "100%" height = { 280} >
     { tab === 'partners' ? (
         <BarChart data= { chartData } margin = {{ top: 10, right: 10, bottom: 0, left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke = "var(--border)" vertical = { false} />
-                <XAxis
-                  dataKey="name"
-tick = {{ fill: 'var(--text-3)', fontSize: 11 }}
-axisLine = { false}
-tickLine = { false}
-interval = { 0}
-angle = {- 15}
-textAnchor = "end"
-height = { 60}
-    />
+                <XAxis dataKey="name" tick = {{ fill: 'var(--text-3)', fontSize: 11 }}
+axisLine = { false} tickLine = { false} interval = { 0}
+angle = {- 15} textAnchor = "end" height = { 60} />
     <YAxis tick={ { fill: 'var(--text-3)', fontSize: 11 } } axisLine = { false} tickLine = { false} />
-        <Tooltip
-                  contentStyle={
-    {
-        background: 'var(--surface)',
-            border: '1px solid var(--border-2)',
-                borderRadius: 10,
-                    fontSize: 12,
-                        color: 'var(--text)'
-    }
+        <Tooltip contentStyle={
+            {
+                background: 'var(--surface)', border: '1px solid var(--border-2)',
+                    borderRadius: 10, fontSize: 12, color: 'var(--text)'
+            }
 }
 formatter = {(v: number) => [`${v.toLocaleString('ru-RU')} ₽`, 'Сумма']}
                 />
     < Bar dataKey = "amount" fill = "#14a37f" radius = { [6, 6, 0, 0]} />
         </BarChart>
-            ) : (
+            ) : tab === 'rating' ? (
     <LineChart data= { chartData } margin = {{ top: 10, right: 10, bottom: 0, left: -10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke = "var(--border)" vertical = { false} />
-            <XAxis
-                  dataKey="name"
-tick = {{ fill: 'var(--text-3)', fontSize: 11 }}
-axisLine = { false}
-tickLine = { false}
-interval = { 0}
-angle = {- 15}
-textAnchor = "end"
-height = { 60}
-    />
+            <XAxis dataKey="name" tick = {{ fill: 'var(--text-3)', fontSize: 10 }}
+axisLine = { false} tickLine = { false} interval = { 0}
+angle = {- 20} textAnchor = "end" height = { 70} />
     <YAxis tick={ { fill: 'var(--text-3)', fontSize: 11 } } axisLine = { false} tickLine = { false} />
-        <Tooltip
-                  contentStyle={
-    {
-        background: 'var(--surface)',
-            border: '1px solid var(--border-2)',
-                borderRadius: 10,
-                    fontSize: 12,
-                        color: 'var(--text)'
-    }
-}
-                />
-    < Line
-type = "monotone"
-dataKey = "hours"
-stroke = "#14a37f"
-strokeWidth = { 2.5}
-dot = {{ r: 4, fill: '#14a37f' }}
-activeDot = {{ r: 6 }}
-                />
+        <Tooltip contentStyle={
+            {
+                background: 'var(--surface)', border: '1px solid var(--border-2)',
+                    borderRadius: 10, fontSize: 12, color: 'var(--text)'
+            }
+} />
+    < Line type = "monotone" dataKey = "hours" stroke = "#ff7a59" strokeWidth = { 2.5}
+dot = {{ r: 5, fill: '#ff7a59' }} activeDot = {{ r: 7 }} />
     </LineChart>
+            ) : (
+    <BarChart data= { chartData } margin = {{ top: 10, right: 10, bottom: 0, left: -10 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke = "var(--border)" vertical = { false} />
+            <XAxis dataKey="name" tick = {{ fill: 'var(--text-3)', fontSize: 11 }}
+axisLine = { false} tickLine = { false} interval = { 0}
+angle = {- 15} textAnchor = "end" height = { 60} />
+    <YAxis tick={ { fill: 'var(--text-3)', fontSize: 11 } } axisLine = { false} tickLine = { false} />
+        <Tooltip contentStyle={
+            {
+                background: 'var(--surface)', border: '1px solid var(--border-2)',
+                    borderRadius: 10, fontSize: 12, color: 'var(--text)'
+            }
+}
+formatter = {(v: number) => [`${v.toFixed(1)} ч`, 'Часы']} />
+    < Bar dataKey = "hours" fill = "#14a37f" radius = { [6, 6, 0, 0]} />
+        </BarChart>
             )}
 </ResponsiveContainer>
     </div>
       )}
 
-{/* TABLE */ }
 {
     loading ? (
         <div style= {{ display: 'flex', flexDirection: 'column', gap: 8 }
@@ -362,7 +310,7 @@ activeDot = {{ r: 6 }}
     <EmptyState
             illustration={ <IllBarChart size={ 110 } /> }
 title = "Нет данных"
-text = "Измените фильтры или период, либо добавьте записи"
+text = "Измените фильтры или период"
     />
     </div>
       ) : (
@@ -374,10 +322,8 @@ text = "Измените фильтры или период, либо добав
 {
     headers.map(h => (
         <th key= { h } style = {{
-        textTransform: 'none',
-        letterSpacing: 0,
-        fontSize: 12,
-        color: 'var(--text-2)'
+        textTransform: 'none', letterSpacing: 0,
+        fontSize: 12, color: 'var(--text-2)'
     }}> { h } </th>
                 ))}
 </tr>
@@ -385,12 +331,8 @@ text = "Измените фильтры или период, либо добав
     <tbody>
 {
     filtered.map((row, i) => (
-        <motion.tr
-                  key= { i }
-                  initial = {{ opacity: 0 }}
-animate = {{ opacity: 1 }}
-transition = {{ delay: Math.min(i * 0.015, 0.3) }}
-                >
+        <motion.tr key= { i } initial = {{ opacity: 0 }} animate = {{ opacity: 1 }}
+transition = {{ delay: Math.min(i * 0.015, 0.3) }}>
     <td style={ { color: 'var(--text-3)', fontSize: 12 } }> { i + 1}</td>
 {
     headers.map(h => {
@@ -398,10 +340,7 @@ transition = {{ delay: Math.min(i * 0.015, 0.3) }}
         const isNum = typeof v === 'number';
         return (
             <td key= { h } className = { isNum? 'num': '' } >
-            {
-                isNum
-                    ?(v as number).toLocaleString('ru-RU')
-                          : String(v ?? '—')
+            { isNum?(v as number).toLocaleString('ru-RU') : String(v ?? '—')
 }
 </td>
                     );

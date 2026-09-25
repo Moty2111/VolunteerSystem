@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import { eventsApi } from '../api/events';
 import Topbar from './Topbar';
 import CommandPalette from './CommandPalette';
 import Logo from './Logo';
+import ThemeToggle from './ThemeToggle';
 import {
     LayoutDashboard, Users, Calendar, CheckSquare, Award, Briefcase,
-    BarChart3, LogOut, Sun, Moon, ChevronsLeft, ChevronsRight
+    BarChart3, LogOut, ChevronsLeft, ChevronsRight, UserCircle
 } from 'lucide-react';
 
 export default function Layout() {
     const { user, logout } = useAuth();
-    const { theme, toggleTheme } = useTheme();
     const navigate = useNavigate();
     const location = useLocation();
     const [collapsed, setCollapsed] = useState(false);
@@ -55,6 +54,7 @@ export default function Layout() {
         <aside className={ `sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}` }>
             <div className="sidebar-logo" >
                 <Logo size={ collapsed ? 36 : 42 } markOnly = { collapsed } />
+
                     {!collapsed && (
                         <button
               className="icon-btn"
@@ -66,6 +66,7 @@ title = "Свернуть меню"
     <ChevronsLeft size={ 16 } />
         </button>
           )}
+
 {
     collapsed && (
         <button
@@ -91,11 +92,13 @@ title = "Развернуть меню"
     (isAdmin || isManager) && (
         <>
         <div className="sidebar-section" > { collapsed? '•': 'Управление' } </div>
+
             < NavLink to = "/volunteers" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`
 }>
     <Users />
     < span className = "hide-collapsed" > Волонтёры </span>
         </NavLink>
+
         < NavLink to = "/events" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <Calendar />
             < span className = "hide-collapsed" > Мероприятия </span>
@@ -105,14 +108,17 @@ title = "Развернуть меню"
                 )
 }
 </NavLink>
+
     < NavLink to = "/assignments" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <CheckSquare />
         < span className = "hide-collapsed" > Назначения </span>
             </NavLink>
+
             < NavLink to = "/skills" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <Award />
                 < span className = "hide-collapsed" > Навыки </span>
                     </NavLink>
+
 {
     isAdmin && (
         <NavLink to="/partners" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`
@@ -121,6 +127,7 @@ title = "Развернуть меню"
     < span className = "hide-collapsed" > Партнёры </span>
         </NavLink>
               )}
+
 <NavLink to="/reports" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
     <BarChart3 />
     < span className = "hide-collapsed" > Отчёты </span>
@@ -132,6 +139,7 @@ title = "Развернуть меню"
     isVolunteer && (
         <>
         <div className="sidebar-section" > { collapsed? '•': 'Мой кабинет' } </div>
+
             < NavLink to = "/events" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`
 }>
     <Calendar />
@@ -142,17 +150,25 @@ title = "Развернуть меню"
                 )
 }
 </NavLink>
+
     < NavLink to = "/my-assignments" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <CheckSquare />
         < span className = "hide-collapsed" > Мои назначения </span>
             </NavLink>
             </>
           )}
-</nav>
 
-    < div className = "sidebar-user" >
-        <div className="sidebar-user-info" >
-            <div className="sidebar-user-avatar" > { initials } </div>
+<div className="sidebar-section" > { collapsed? '•': 'Аккаунт' } </div>
+    < NavLink to = "/profile" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <UserCircle />
+        < span className = "hide-collapsed" > Мой профиль </span>
+            </NavLink>
+            </nav>
+
+            < div className = "sidebar-user" >
+                <div className="sidebar-user-info" >
+                    <div className="sidebar-user-avatar" > { initials } </div>
+
 {
     !collapsed && (
         <>
@@ -160,12 +176,12 @@ title = "Развернуть меню"
             <div className="sidebar-user-name" > { user?.loginName } </div>
                 < div className = "sidebar-user-role" > { user?.role } </div>
                     </div>
-                    < button className = "icon-btn" onClick = { toggleTheme } title = "Сменить тему" >
-                    { theme === 'dark' ? <Sun size={ 15 } /> : <Moon size={15} / >}
-</button>
-    </>
-            )}
+                    < ThemeToggle />
+                    </>
+            )
+}
 </div>
+
     < button
 className = "btn btn-ghost btn-sm"
 style = {{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}

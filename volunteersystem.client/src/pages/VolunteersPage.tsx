@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { volunteersApi } from '../api/volunteers';
+import { skillsApi, type VolunteerSkill } from '../api/skills';
 import type { Volunteer } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
@@ -10,7 +11,10 @@ import { IllSprout } from '../components/illustrations';
 import VolunteerProfileModal from './VolunteerProfileModal';
 import { getLevel } from '../utils/level';
 import { plural } from '../utils/format';
-import { Plus, Search, Trash2, Users, Eye, MapPin, Phone, Mail, Award } from 'lucide-react';
+import {
+    Plus, Search, Trash2, Users, Eye, MapPin, Phone, Mail,
+    Award, Shield, ShieldCheck, Activity
+} from 'lucide-react';
 
 const PAGE_SIZE = 12;
 
@@ -19,6 +23,7 @@ export default function VolunteersPage() {
     const toast = useToast();
 
     const [items, setItems] = useState<Volunteer[]>([]);
+    const [skillsMap, setSkillsMap] = useState<Record<number, VolunteerSkill[]>>({});
     const [loading, setLoading] = useState(true);
     const [cityFilter, setCityFilter] = useState('');
     const [activeFilter, setActiveFilter] = useState('');
@@ -40,13 +45,21 @@ export default function VolunteersPage() {
             const params: Record<string, unknown> = {};
             if (cityFilter) params.city = cityFilter;
             if (activeFilter) params.active = activeFilter === 'true';
-            setItems(await volunteersApi.getAll(params));
+            const list = await volunteersApi.getAll(params);
+            setItems(list);
+
+            // Загружаем навыки для первых 30 волонтёров (оптимизация)
+            const map: Record<number, VolunteerSkill[]> = {};
+            await Promise.all(list.slice(0, 30).map(async v => {
+                try {
+                    map[v.volunteerId] = await skillsApi.getVolunteerSkills(v.volunteerId);
+                } catch { /* ignore */ }
+            }));
+            setSkillsMap(map);
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Ошибка загрузки');
-        } finally {
-            setLoading(false);
-        }
+        } finally { setLoading(false); }
     };
 
     useEffect(() => { load(); }, []);
@@ -70,15 +83,9 @@ export default function VolunteersPage() {
     useEffect(() => { setPage(1); }, [search, cityFilter, activeFilter]);
 
     const handleCreate = async () => {
-        if (!form.fullName || !form.email) {
-            toast.error('Заполните обязательные поля');
-            return;
-        }
+        if (!form.fullName || !form.email) { toast.error('Заполните обязательные поля'); return; }
         try {
-            await volunteersApi.create({
-                ...form,
-                medBookValidUntil: form.medBookValidUntil || null
-            });
+            await volunteersApi.create({ ...form, medBookValidUntil: form.medBookValidUntil || null });
             toast.success('Волонтёр добавлен');
             setForm({ fullName: '', birthDate: '', phone: '', email: '', city: '', medBookValidUntil: '', personalDataConsent: true });
             setShowForm(false);
@@ -124,19 +131,10 @@ export default function VolunteersPage() {
 </div>
 
     < div className = "filter-bar" >
-        <input
-          className="input"
-placeholder = "Поиск по имени, городу, email…"
-value = { search }
-onChange = { e => setSearch(e.target.value) }
-style = {{ minWidth: 280 }}
-        />
-    < input
-className = "input"
-placeholder = "Город"
-value = { cityFilter }
-onChange = { e => setCityFilter(e.target.value) }
-    />
+        <input className="input" placeholder = "Поиск по имени, городу, email…"
+value = { search } onChange = { e => setSearch(e.target.value) } style = {{ minWidth: 280 }} />
+    < input className = "input" placeholder = "Город"
+value = { cityFilter } onChange = { e => setCityFilter(e.target.value) } />
     <select className="select" value = { activeFilter } onChange = { e => setActiveFilter(e.target.value) } >
         <option value="" > Все статусы </option>
             < option value = "true" > Активные </option>
@@ -149,20 +147,16 @@ onChange = { e => setCityFilter(e.target.value) }
 
 {
     loading ? (
-        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }
+        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }
 }>
-{ [1, 2, 3, 4, 5, 6].map(i => <Skeleton key={ i } height = { 180} radius = { 16} />) }
+{ [1, 2, 3, 4, 5, 6].map(i => <Skeleton key={ i } height = { 230} radius = { 16} />) }
     </div>
       ) : filtered.length === 0 ? (
     <div className= "card" >
     <EmptyState
             illustration={ <IllSprout size={ 110 } /> }
 title = "Волонтёров не найдено"
-text = {
-    items.length === 0
-        ? 'Добавьте первого волонтёра и пригласите команду'
-        : 'Попробуйте изменить фильтры поиска'
-}
+text = { items.length === 0 ? 'Добавьте первого волонтёра и пригласите команду' : 'Измените фильтры' }
 action = { canCreate && items.length === 0 ? (
     <button className= "btn btn-primary btn-sm" onClick = {() => setShowForm(true)}>
         <Plus size={ 14 } /> Добавить
@@ -173,19 +167,15 @@ action = { canCreate && items.length === 0 ? (
       ) : (
     <>
     <motion.div
-            initial= {{ opacity: 0 }}
-animate = {{ opacity: 1 }}
-style = {{
-    display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: 14,
-                marginBottom: 20
-}}
+            initial= {{ opacity: 0 }} animate = {{ opacity: 1 }}
+style = {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14, marginBottom: 20 }}
           >
     <AnimatePresence>
     {
         paged.map((v, i) => {
+            const skills = skillsMap[v.volunteerId] || [];
             const level = getLevel(0);
+            const hasMedBook = !!v.medBookValidUntil;
             return (
                 <motion.div
                     key= { v.volunteerId }
@@ -207,7 +197,7 @@ style = {{
 }}
 onMouseEnter = { e => {
     e.currentTarget.style.borderColor = 'var(--primary)';
-    e.currentTarget.style.transform = 'translateY(-2px)';
+    e.currentTarget.style.transform = 'translateY(-3px)';
     e.currentTarget.style.boxShadow = 'var(--shadow-md)';
 }}
 onMouseLeave = { e => {
@@ -216,17 +206,24 @@ onMouseLeave = { e => {
     e.currentTarget.style.boxShadow = 'none';
 }}
                   >
-    <div style={ { display: 'flex', gap: 14, marginBottom: 14 } }>
+{/* Медкнижка индикатор */ }
+    < div style = {{
+    position: 'absolute', top: 14, right: 14,
+        width: 26, height: 26, borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: hasMedBook ? 'var(--success-soft)' : 'var(--danger-soft)',
+                    color: hasMedBook ? 'var(--success)' : 'var(--danger)'
+}} title = { hasMedBook? `Медкнижка до ${v.medBookValidUntil}` : 'Нет медкнижки'}>
+    { hasMedBook?<ShieldCheck size = { 14 } /> : <Shield size={ 14 } />}
+</div>
+
+    < div style = {{ display: 'flex', gap: 14, marginBottom: 14 }}>
         <Avatar name={ v.fullName } size = "lg" />
-            <div style={ { flex: 1, minWidth: 0 } }>
+            <div style={ { flex: 1, minWidth: 0, paddingRight: 30 } }>
                 <div style={
                     {
-                        fontFamily: 'var(--font-head)',
-                            fontWeight: 700,
-                                fontSize: 15,
-                                    overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap'
+                        fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 15,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                     }
 } title = { v.fullName } >
 { v.fullName }
@@ -234,21 +231,17 @@ onMouseLeave = { e => {
     < div style = {{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12, color: 'var(--text-3)' }}>
         <MapPin size={ 12 } /> {v.city}
             </div>
-            < div style = {{ marginTop: 6 }}>
+            < div style = {{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <span className={ `level-pill level-${level.key}` }>
                     <span className="level-dot" />
                     { level.label }
                         </span>
-                        </div>
-                        </div>
-{
-    !v.isActive && (
-        <Badge variant="muted" > неактивен </Badge>
-                      )
-}
+{ !v.isActive && <Badge variant="muted" > неактивен </Badge> }
 </div>
+    </div>
+    </div>
 
-    < div style = {{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+    < div style = {{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, marginBottom: 12 }}>
         <div style={ { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-2)' } }>
             <Phone size={ 13 } /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.phone}</span >
                 </div>
@@ -257,34 +250,56 @@ onMouseLeave = { e => {
                         </div>
                         </div>
 
-                        < div style = {{
-    display: 'flex',
-        gap: 6,
-            marginTop: 12,
-                paddingTop: 12,
-                    borderTop: '1px solid var(--border)',
-                        alignItems: 'center'
-}}>
+{/* Навыки */ }
 {
-    v.medBookValidUntil
-        ? <Badge variant="success" icon = {< Award size={ 11} />} > медкнижка </Badge>
-                        : <Badge variant="danger" > нет медкнижки </Badge>}
-<div style={ { marginLeft: 'auto', display: 'flex', gap: 4 } }>
-    <button
-                          className="btn btn-icon btn-secondary"
+    skills.length > 0 && (
+        <div style={
+            {
+                display: 'flex', gap: 6, flexWrap: 'wrap',
+                    paddingTop: 12, marginBottom: 4,
+                        borderTop: '1px solid var(--border)'
+            }
+    }>
+    {
+        skills.slice(0, 3).map(s => (
+            <span key= { s.skillId } className = "skill-chip" style = {{ fontSize: 11, padding: '2px 8px' }} >
+        <Award size={ 10 } />
+    { s.skillName }
+    </span>
+                        ))
+}
+{
+    skills.length > 3 && (
+        <span className="skill-chip" style = {{ fontSize: 11, padding: '2px 8px', color: 'var(--text-3)' }
+}>
+    +{ skills.length - 3 }
+    </span>
+                        )}
+</div>
+                    )}
+
+<div style={
+    {
+        display: 'flex', gap: 6, marginTop: 12, paddingTop: 12,
+            borderTop: '1px solid var(--border)', alignItems: 'center'
+    }
+}>
+    <div style={ { display: 'flex', gap: 4, fontSize: 11, color: 'var(--text-3)' } }>
+        <Activity size={ 12 } />
+            < span > ID #{ v.volunteerId } </span>
+                </div>
+                < div style = {{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                    <button className="btn btn-icon btn-secondary"
 onClick = {(e) => { e.stopPropagation(); setProfileVolunteer(v); }}
-title = "Профиль"
-    >
+title = "Профиль" >
     <Eye size={ 14 } />
         </button>
 {
     user?.role === 'Администратор' && (
-        <button
-                            className="btn btn-icon btn-danger"
+        <button className="btn btn-icon btn-danger"
     onClick = {(e) => handleDelete(e, v.volunteerId)
 }
-title = "Удалить"
-    >
+title = "Удалить" >
     <Trash2 size={ 14 } />
         </button>
                         )}
@@ -299,20 +314,14 @@ title = "Удалить"
 {
     totalPages > 1 && (
         <div style={ { display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' } }>
-            <button
-                className="btn btn-secondary btn-sm"
-    disabled = { page === 1
+            <button className="btn btn-secondary btn-sm" disabled = { page === 1
 }
-onClick = {() => setPage(p => p - 1)}
-              >←</button>
+onClick = {() => setPage(p => p - 1)}>←</button>
     < span style = {{ fontSize: 13, color: 'var(--text-2)', minWidth: 80, textAlign: 'center' }}>
         { page } / { totalPages }
         </span>
-        < button
-className = "btn btn-secondary btn-sm"
-disabled = { page === totalPages}
-onClick = {() => setPage(p => p + 1)}
-              >→</button>
+        < button className = "btn btn-secondary btn-sm" disabled = { page === totalPages}
+onClick = {() => setPage(p => p + 1)}>→</button>
     </div>
           )}
 </>
@@ -332,45 +341,36 @@ footer = {
     <div className="form-row" >
         <div className="field" >
             <label className="field-label" > ФИО * </label>
-                < input className = "input" value = { form.fullName }
-onChange = { e => setForm({ ...form, fullName: e.target.value })} />
-    </div>
-    < div className = "field" >
-        <label className="field-label" > Дата рождения * </label>
-            < input type = "date" className = "input" value = { form.birthDate }
-onChange = { e => setForm({ ...form, birthDate: e.target.value })} />
-    </div>
-    </div>
-    < div className = "form-row" >
-        <div className="field" >
-            <label className="field-label" > Телефон * </label>
-                < input className = "input" value = { form.phone }
-onChange = { e => setForm({ ...form, phone: e.target.value })} />
-    </div>
-    < div className = "field" >
-        <label className="field-label" > Email * </label>
-            < input className = "input" value = { form.email }
-onChange = { e => setForm({ ...form, email: e.target.value })} />
-    </div>
-    </div>
-    < div className = "form-row" >
-        <div className="field" >
-            <label className="field-label" > Город * </label>
-                < input className = "input" value = { form.city }
-onChange = { e => setForm({ ...form, city: e.target.value })} />
-    </div>
-    < div className = "field" >
-        <label className="field-label" > Медкнижка(до) </label>
-            < input type = "date" className = "input" value = { form.medBookValidUntil }
-onChange = { e => setForm({ ...form, medBookValidUntil: e.target.value })} />
-    </div>
-    </div>
-    </Modal>
+                < input className = "input" value = { form.fullName } onChange = { e => setForm({ ...form, fullName: e.target.value })} />
+                    </div>
+                    < div className = "field" >
+                        <label className="field-label" > Дата рождения * </label>
+                            < input type = "date" className = "input" value = { form.birthDate } onChange = { e => setForm({ ...form, birthDate: e.target.value })} />
+                                </div>
+                                </div>
+                                < div className = "form-row" >
+                                    <div className="field" >
+                                        <label className="field-label" > Телефон * </label>
+                                            < input className = "input" value = { form.phone } onChange = { e => setForm({ ...form, phone: e.target.value })} />
+                                                </div>
+                                                < div className = "field" >
+                                                    <label className="field-label" > Email * </label>
+                                                        < input className = "input" value = { form.email } onChange = { e => setForm({ ...form, email: e.target.value })} />
+                                                            </div>
+                                                            </div>
+                                                            < div className = "form-row" >
+                                                                <div className="field" >
+                                                                    <label className="field-label" > Город * </label>
+                                                                        < input className = "input" value = { form.city } onChange = { e => setForm({ ...form, city: e.target.value })} />
+                                                                            </div>
+                                                                            < div className = "field" >
+                                                                                <label className="field-label" > Медкнижка(до) </label>
+                                                                                    < input type = "date" className = "input" value = { form.medBookValidUntil } onChange = { e => setForm({ ...form, medBookValidUntil: e.target.value })} />
+                                                                                        </div>
+                                                                                        </div>
+                                                                                        </Modal>
 
-    < VolunteerProfileModal
-volunteer = { profileVolunteer }
-onClose = {() => setProfileVolunteer(null)}
-      />
-    </div>
+                                                                                        < VolunteerProfileModal volunteer = { profileVolunteer } onClose = {() => setProfileVolunteer(null)} />
+                                                                                            </div>
   );
 }

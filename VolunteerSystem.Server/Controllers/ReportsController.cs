@@ -1,0 +1,113 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using VolunteerSystem.Server.Data;
+using VolunteerSystem.Server.Dtos.Reports;
+
+namespace VolunteerSystem.Server.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize(Roles = "Администратор,Менеджер")]
+public class ReportsController : ControllerBase
+{
+    private readonly AppDbContext _db;
+
+    public ReportsController(AppDbContext db) => _db = db;
+
+    // ============================================================
+    // GET: /api/reports/volunteer-summary — сводка по волонтёрам
+    // ============================================================
+    [HttpGet("volunteer-summary")]
+    public async Task<ActionResult<IEnumerable<VolunteerSummaryRow>>> VolunteerSummary()
+    {
+        var rows = await _db.Database
+            .SqlQueryRaw<VolunteerSummaryRow>("SELECT * FROM vw_VolunteerSummary")
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
+    // ============================================================
+    // GET: /api/reports/event-participants/2 — участники мероприятия
+    // ============================================================
+    [HttpGet("event-participants/{eventId:int}")]
+    public async Task<ActionResult<IEnumerable<EventParticipantRow>>> EventParticipants(int eventId)
+    {
+        var rows = await _db.Database
+            .SqlQueryRaw<EventParticipantRow>(
+                "SELECT * FROM vw_EventParticipants WHERE event_id = {0}", eventId)
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
+    // ============================================================
+    // GET: /api/reports/partner-report — партнёрский отчёт
+    // ============================================================
+    [HttpGet("partner-report")]
+    public async Task<ActionResult<IEnumerable<PartnerReportRow>>> PartnerReport()
+    {
+        var rows = await _db.Database
+            .SqlQueryRaw<PartnerReportRow>("SELECT * FROM vw_PartnerReport")
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
+    // ============================================================
+    // GET: /api/reports/hours?from=2026-01-01&to=2026-12-31
+    // Использует хранимую процедуру sp_HoursReport
+    // ============================================================
+    [HttpGet("hours")]
+    public async Task<ActionResult<IEnumerable<HoursByPeriodRow>>> HoursByPeriod(
+        [FromQuery] DateTime from,
+        [FromQuery] DateTime to)
+    {
+        var rows = await _db.Database
+            .SqlQueryRaw<HoursByPeriodRow>(
+                "EXEC sp_HoursReport @date_from = {0}, @date_to = {1}",
+                from.Date, to.Date)
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
+    // ============================================================
+    // GET: /api/reports/volunteer-rating — рейтинг волонтёров
+    // Использует хранимую процедуру sp_VolunteerRating
+    // ============================================================
+    [HttpGet("volunteer-rating")]
+    public async Task<ActionResult<IEnumerable<VolunteerRatingRow>>> VolunteerRating()
+    {
+        var rows = await _db.Database
+            .SqlQueryRaw<VolunteerRatingRow>("EXEC sp_VolunteerRating")
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+
+    // ============================================================
+    // GET: /api/reports/audit-log?limit=100 — журнал аудита
+    // ============================================================
+    [HttpGet("audit-log")]
+    [Authorize(Roles = "Администратор")]
+    public async Task<IActionResult> AuditLog([FromQuery] int limit = 100)
+    {
+        var rows = await _db.AuditLogs
+            .OrderByDescending(l => l.action_date)
+            .Take(limit)
+            .Select(l => new
+            {
+                l.log_id,
+                l.user_id,
+                l.action,
+                l.table_name,
+                l.record_id,
+                l.action_date
+            })
+            .ToListAsync();
+
+        return Ok(rows);
+    }
+}

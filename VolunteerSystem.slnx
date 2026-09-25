@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="volunteersystem.client/volunteersystem.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="VolunteerSystem.Server/VolunteerSystem.Server.csproj" />
+</Solution>

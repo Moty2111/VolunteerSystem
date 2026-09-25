@@ -1,0 +1,9 @@
+namespace VolunteerSystem.Server.Dtos.Reports;
+
+public class HoursByPeriodRow
+{
+    public string full_name { get; set; } = string.Empty;
+    public string city { get; set; } = string.Empty;
+    public int events_count { get; set; }
+    public decimal total_hours { get; set; }
+}

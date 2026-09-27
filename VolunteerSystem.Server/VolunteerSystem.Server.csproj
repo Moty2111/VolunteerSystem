@@ -35,7 +35,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Controllers\" />
     <Folder Include="Dtos\Auth\" />
     <Folder Include="Dtos\Volunteers\" />
     <Folder Include="Dtos\Events\" />

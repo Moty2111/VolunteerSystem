@@ -14,8 +14,9 @@ export default function Avatar({ name, size = 'md' }: Props) {
       title={name}
       aria-label={name}
     >
-      {getInitials(name)}
+      <span className="avatar-initials">{getInitials(name)}</span>
     </div>
+
   );
 }
 
@@ -27,8 +28,9 @@ export function AvatarGroup({ names, size = 'sm', max = 5 }: { names: string[]; 
       {shown.map((n, i) => <Avatar key={i} name={n} size={size} />)}
       {rest > 0 && (
         <div className="avatar avatar-sm" style={{ background: 'var(--surface-3)', color: 'var(--text-2)' }}>
-          +{rest}
+          <span className="avatar-initials">+{rest}</span>
         </div>
+
       )}
     </div>
   );

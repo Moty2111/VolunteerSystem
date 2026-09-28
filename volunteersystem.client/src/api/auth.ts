@@ -8,5 +8,8 @@ export const authApi = {
     register: (data: RegisterRequest) =>
         api.post<AuthResponse>('/auth/register', data).then(r => r.data),
 
-    me: () => api.get('/auth/me').then(r => r.data)
+    me: () => api.get('/auth/me').then(r => r.data),
+
+    changePassword: (data: { currentPassword: string; newPassword: string }) =>
+        api.post<{ message: string }>('/auth/change-password', data).then(r => r.data)
 };

@@ -3,23 +3,52 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
 import type { EventItem } from '../types';
+import { plural } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
-import { Badge, EmptyState, Skeleton, Avatar } from '../components/ui';
+import EventMap from '../components/EventMap';
+import { Badge, EmptyState, Skeleton } from '../components/ui';
 import { IllCalendar } from '../components/illustrations';
 import {
     Plus, Search, Trash2, Calendar, MapPin, Users, Clock, Check, X,
-    Navigation, Info, UserCheck
+    Info, UserCheck, ArrowDownUp, ArrowRight, CalendarClock, ImageOff,
+    Eye, UserPlus
 } from 'lucide-react';
+import posterSocial from '../assets/events/social.svg';
+import posterEco from '../assets/events/eco.svg';
+import posterCulture from '../assets/events/culture.svg';
+import posterCharity from '../assets/events/charity.svg';
+import posterSport from '../assets/events/sport.svg';
+import posterEducation from '../assets/events/education.svg';
 
 const STATUSES = ['Запланировано', 'Идёт', 'Завершено', 'Отменено'] as const;
 const TYPE_LABELS: Record<number, string> = {
     1: 'Социальное', 2: 'Экологическое', 3: 'Культурное',
     4: 'Благотворительное', 5: 'Спортивное', 6: 'Образовательное'
 };
+/* иллюстрированные постеры типов мероприятий */
+const TYPE_POSTERS: Record<number, string> = {
+    1: posterSocial, 2: posterEco, 3: posterCulture,
+    4: posterCharity, 5: posterSport, 6: posterEducation
+};
+const posterFor = (typeId: number) => TYPE_POSTERS[typeId] || posterSocial;
 const statusBadge: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
     'Запланировано': 'info', 'Идёт': 'warning', 'Завершено': 'success', 'Отменено': 'danger'
+};
+
+type SortKey = 'date-asc' | 'date-desc' | 'name' | 'participants' | 'status';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+    { key: 'date-asc', label: 'Дата: сначала ближайшие' },
+    { key: 'date-desc', label: 'Дата: сначала давние' },
+    { key: 'name', label: 'Название: А → Я' },
+    { key: 'participants', label: 'Больше участников' },
+    { key: 'status', label: 'Статус: активные сверху' }
+];
+
+const STATUS_ORDER: Record<string, number> = {
+    'Идёт': 0, 'Запланировано': 1, 'Завершено': 2, 'Отменено': 3
 };
 
 function daysUntil(dateStr: string): string {
@@ -41,6 +70,8 @@ export default function EventsPage() {
     const [myEventIds, setMyEventIds] = useState<number[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
+    const [typeFilter, setTypeFilter] = useState('');
+    const [sort, setSort] = useState<SortKey>('date-asc');
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [details, setDetails] = useState<EventItem | null>(null);
@@ -75,12 +106,36 @@ export default function EventsPage() {
     useEffect(() => { load(); }, []);
 
     const filtered = useMemo(() => {
-        if (!search) return items;
-        const q = search.toLowerCase();
-        return items.filter(e =>
-            e.eventName.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
-        );
-    }, [items, search]);
+        let list = items;
+        if (typeFilter) list = list.filter(e => String(e.eventTypeId) === typeFilter);
+        if (search) {
+            const q = search.toLowerCase();
+            list = list.filter(e =>
+                e.eventName.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
+            );
+        }
+        const sorted = [...list];
+        switch (sort) {
+            case 'date-asc':
+                sorted.sort((a, b) => new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime());
+                break;
+            case 'date-desc':
+                sorted.sort((a, b) => new Date(b.dateStart).getTime() - new Date(a.dateStart).getTime());
+                break;
+            case 'name':
+                sorted.sort((a, b) => a.eventName.localeCompare(b.eventName, 'ru'));
+                break;
+            case 'participants':
+                sorted.sort((a, b) => b.assignmentsCount - a.assignmentsCount);
+                break;
+            case 'status':
+                sorted.sort((a, b) =>
+                    (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9) ||
+                    new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime());
+                break;
+        }
+        return sorted;
+    }, [items, search, typeFilter, sort]);
 
     const handleSignUp = async (eventId: number) => {
         if (!user?.volunteerId) { toast.error('Профиль волонтёра не найден'); return; }
@@ -137,9 +192,6 @@ export default function EventsPage() {
         }
     };
 
-    const mapLink = (address: string) =>
-        `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`;
-
     return (
         <div>
         <div className= "page-header" >
@@ -161,19 +213,33 @@ export default function EventsPage() {
 
     < div className = "filter-bar" >
         <input className="input" placeholder = "Поиск по названию или месту…"
-value = { search } onChange = { e => setSearch(e.target.value) } style = {{ minWidth: 280 }} />
+value = { search } onChange = { e => setSearch(e.target.value) } style = {{ minWidth: 240 }} />
     < select className = "select" value = { statusFilter } onChange = { e => setStatusFilter(e.target.value) } >
         <option value="" > Все статусы </option>
 { STATUSES.map(s => <option key={ s } value = { s } > { s } </option>) }
 </select>
+    < select className = "select" value = { typeFilter } onChange = { e => setTypeFilter(e.target.value) } >
+        <option value="" > Все типы </option>
+{
+    Object.entries(TYPE_LABELS).map(([id, name]) => (
+        <option key= { id } value = { id } > { name } </option>
+    ))
+}
+</select>
+    < select className = "select sort-select" value = { sort } onChange = { e => setSort(e.target.value as SortKey) } >
+{
+    SORT_OPTIONS.map(o => <option key= { o.key } value = { o.key } > { o.label } </option>)
+}
+</select>
+    < span className = "sort-hint" > <ArrowDownUp size = { 13 } /> найдено: { filtered.length } </span >
     < button className = "btn btn-secondary" onClick = { load } >
-        <Search size={ 16 } /> Применить
+        <Search size={ 16 } /> Обновить
             </button>
             </div>
 
 {
     loading ? (
-        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }
+        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))', gap: 16 }
 }>
 { [1, 2, 3, 4].map(i => <Skeleton key={ i } height = { 260} radius = { 16} />) }
     </div>
@@ -193,7 +259,7 @@ action = { canEdit && items.length === 0 ? (
       ) : (
     <motion.div
           initial= {{ opacity: 0 }} animate = {{ opacity: 1 }}
-style = {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}
+style = {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: 16 }}
         >
     <AnimatePresence>
     {
@@ -214,103 +280,79 @@ style = {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px
                   animate = {{ opacity: 1, y: 0 }}
 exit = {{ opacity: 0, scale: 0.95 }}
 transition = {{ delay: i * 0.03 }}
+className = "event-card"
 onClick = {() => setDetails(e)}
-style = {{
-    background: 'var(--surface)',
-        border: '1px solid var(--border)',
-            borderRadius: 'var(--r-lg)',
-                overflow: 'hidden',
-                    display: 'flex', flexDirection: 'column',
-                        transition: 'all .2s', cursor: 'pointer'
-}}
-onMouseEnter = { el => {
-    el.currentTarget.style.borderColor = 'var(--primary)';
-    el.currentTarget.style.transform = 'translateY(-3px)';
-    el.currentTarget.style.boxShadow = 'var(--shadow-md)';
-}}
-onMouseLeave = { el => {
-    el.currentTarget.style.borderColor = 'var(--border)';
-    el.currentTarget.style.transform = 'none';
-    el.currentTarget.style.boxShadow = 'none';
-}}
                 >
-    <div style={ { display: 'flex', gap: 14, padding: 18, borderBottom: '1px solid var(--border)' } }>
-        <div style={
-            {
-                display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                        width: 62, padding: '10px 6px',
-                            borderRadius: 'var(--r-md)',
-                                background: 'var(--gradient)',
-                                    color: '#fff', flexShrink: 0,
-                                        boxShadow: '0 4px 14px var(--primary-glow)'
-            }
-}>
-    <span style={ { fontFamily: 'var(--font-head)', fontSize: 22, fontWeight: 800, lineHeight: 1 } }>
-    { day }
-        </span>
-        < span style = {{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 3, opacity: 0.9 }}>
-        { mon }
-            </span>
-            </div>
-
-            < div style = {{ flex: 1, minWidth: 0 }}>
-                <div style={
-                    {
-                        fontFamily: 'var(--font-head)', fontWeight: 700,
-                            fontSize: 16, lineHeight: 1.3, marginBottom: 6,
-                                display: '-webkit-box', WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical', overflow: 'hidden'
-                    }
-}>
-{ e.eventName }
-    </div>
-    < div style = {{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <Badge variant="primary" > { e.eventTypeName || TYPE_LABELS[e.eventTypeId] } </Badge>
-            < Badge variant = { statusBadge[e.status] || 'muted' } > { e.status } </Badge>
-                </div>
-                </div>
-                </div>
-
-                < div style = {{
-    padding: '14px 18px',
-        display: 'flex', flexDirection: 'column', gap: 8,
-            fontSize: 13, color: 'var(--text-2)', flex: 1
-}}>
-    <div style={ { display: 'flex', alignItems: 'center', gap: 8 } }>
-        <Clock size={ 13 } style = {{ color: 'var(--text-3)' }} />
-            < span > { time } · { d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) } </span>
-                </div>
-                < div style = {{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <MapPin size={ 13 } style = {{ color: 'var(--text-3)' }} />
-                        < span style = {{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        { e.location }
-                            </span>
+    <div className="event-card-top" >
+        <div className={ `event-poster poster-${e.eventTypeId}` } >
+            <img
+                className="event-poster-img"
+                src={ posterFor(e.eventTypeId) }
+                alt=""
+                loading="lazy"
+            />
+                < div className = "event-poster-date" >
+                    <span className="d num" > { day } </span>
+                        < span className = "m" > { mon } </span>
                             </div>
-                            < div style = {{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Users size={ 13 } style = {{ color: 'var(--text-3)' }} />
-                                    < span > { e.assignmentsCount } участник(ов) </span>
-                                        </div>
-                                        </div>
+                            </div>
 
-                                        < div style = {{
-    padding: '12px 18px', borderTop: '1px solid var(--border)',
-        display: 'flex', gap: 8, alignItems: 'center',
-            background: 'var(--surface-2)'
-}}>
+                            < div className = "event-card-main" >
+                                <div className="event-card-title" > { e.eventName } </div>
+                                    < div className = "event-card-badges" >
+                                        <Badge variant="primary" > { e.eventTypeName || TYPE_LABELS[e.eventTypeId] } </Badge>
+                                            < Badge variant = { statusBadge[e.status] || 'muted' } > { e.status } </Badge>
+                                                </div>
+                                                </div>
+                                                </div>
+
+                                                < div className = "event-meta" >
+                                                    <div className="event-meta-row" >
+                                                        <Clock size={ 14 } />
+                                                            < span > { time } · { d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) } </span>
+                                                                </div>
+                                                                < div className = "event-meta-row" >
+                                                                    <MapPin size={ 14 } />
+                                                                        < span > { e.location } </span>
+                                                                            </div>
+                                                                            < div className = "event-meta-row" >
+                                                                                <Users size={ 14 } />
+                                                                                    < span > { e.assignmentsCount } { plural(e.assignmentsCount, ['участник', 'участника', 'участников']) } </span>
+                                                                                        </div>
+                                                                                        </div>
+
+                                                                                        < div className = "event-card-foot" >
     <Badge variant={ e.status === 'Завершено' ? 'success' : 'accent' }>
     { until }
         </Badge>
-        < div style = {{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-        { isSignedUp && <Badge variant="success" icon = {< Check size = { 12} />}> Записан </Badge>}
+{
+    isSignedUp && <Badge variant="success" icon = {< Check size = { 12} />}> Записан </Badge>}
+    < div className = "foot-right" >
 {
     canSignUp && (
-        <span style={ { fontSize: 12, color: 'var(--primary)', fontWeight: 600 } }>
-            Нажмите для записи →
-    </span>
+        <span className="hint" >
+            Записаться <ArrowRight size={ 13 } />
+        </span>
                       )
 }
-</div>
+    < div className = "event-card-actions" onClick = {(ev) => ev.stopPropagation()} >
+        <button className="foot-act" title = "Подробнее" onClick = {() => setDetails(e)}>
+            <Eye size={ 14 } />
+                </button>
+{
+    canSignUp && (
+        <button className="foot-act" title = "Записаться" onClick = {() => handleSignUp(e.eventId)}>
+            <UserPlus size={ 14 } />
+                </button>
+            )}
+{
+    canEdit && (
+        <button className="foot-act danger" title = "Удалить" onClick = {() => handleDelete(e.eventId)}>
+            <Trash2 size={ 14 } />
+                </button>
+            )}
+    </div>
+    </div>
     </div>
     </motion.div>
               );
@@ -350,50 +392,37 @@ footer = {
       >
 { details && (
         <>
+        <div className={ `event-modal-banner poster-${details.eventTypeId}` }>
+            <img
+                className="event-modal-banner-img"
+                src={ posterFor(details.eventTypeId) }
+                alt={ details.eventTypeName || TYPE_LABELS[details.eventTypeId] }
+            />
+        </div>
+
         <div style={ { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 20 } }>
             <Badge variant="primary" > { details.eventTypeName || TYPE_LABELS[details.eventTypeId] } </Badge>
                 < Badge variant = { statusBadge[details.status] || 'muted' } > { details.status } </Badge>
                     < Badge variant = "accent" > { daysUntil(details.dateStart) } </Badge>
                         </div>
 
-{/* Карта-превью */ }
-<div style={
-    {
-        height: 200, borderRadius: 'var(--r-md)',
-            background: 'linear-gradient(135deg, var(--primary-500), var(--primary-700))',
-                position: 'relative', overflow: 'hidden', marginBottom: 20,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: '#fff'
-    }
-}>
+{/* Настоящая карта с меткой места */ }
+<div style={ { marginBottom: 20 } }>
     <div style={
         {
-            position: 'absolute', inset: 0,
-                backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'><g fill='none' stroke='%23ffffff' stroke-opacity='0.15' stroke-width='1'><path d='M0 30h60M30 0v60M0 0l60 60M60 0L0 60'/></g></svg>")`,
-                    backgroundRepeat: 'repeat', opacity: 0.6
+            display: 'flex', alignItems: 'center', gap: 7,
+                marginBottom: 9, fontSize: 12, fontWeight: 700,
+                    color: 'var(--text-2)', textTransform: 'uppercase',
+                        letterSpacing: '0.07em'
         }
-} />
-    < div style = {{ position: 'relative', zIndex: 1, textAlign: 'center', padding: 20 }}>
-        <Navigation size={ 40 } />
-            < div style = {{
-    fontFamily: 'var(--font-head)', fontSize: 18, fontWeight: 800,
-        marginTop: 12, maxWidth: 400
-}}>
-{ details.location }
-    </div>
-    < a
-href = { mapLink(details.location) }
-target = "_blank" rel = "noopener noreferrer"
-className = "btn btn-primary btn-sm"
-style = {{ marginTop: 12, background: '#fff', color: 'var(--primary-700)' }}
-                >
-    <MapPin size={ 14 } /> Открыть в Яндекс.Картах
-        </a>
+}>
+    <MapPin size={ 14 } style = {{ color: 'var(--primary)' }} /> Место проведения
         </div>
+        < EventMap address = { details.location } height = { 270} />
         </div>
 
 {/* Сетка деталей */ }
-<div style={ { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 } }>
+<div className="modal-grid-2">
     <DetailItem
                 icon={ <Calendar size={ 16 } /> }
 label = "Начало"

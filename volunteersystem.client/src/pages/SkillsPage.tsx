@@ -6,17 +6,9 @@ import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
 import { Badge, EmptyState, Skeleton } from '../components/ui';
 import { IllAward } from '../components/illustrations';
-import { Plus, Trash2, Award, Search, Users } from 'lucide-react';
-
-const LEVELS = ['Начальный', 'Средний', 'Профессиональный', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
-
-const levelVariant = (level: string): 'muted' | 'info' | 'primary' | 'success' | 'warning' | 'accent' => {
-    if (level === 'Профессиональный') return 'primary';
-    if (level === 'Средний') return 'info';
-    if (['B2', 'C1', 'C2'].includes(level)) return 'success';
-    if (['B1', 'A2'].includes(level)) return 'warning';
-    return 'muted';
-};
+import { plural } from '../utils/format';
+import { SKILL_LEVELS as LEVELS, skillLevelVariant as levelVariant, skillIcon as iconFor, skillTone as toneFor } from '../utils/skillLevels';
+import { Plus, Trash2, Search, Users, Target } from 'lucide-react';
 
 const groupByLevel = (skills: Skill[]) => {
     const map = new Map<string, Skill[]>();
@@ -133,13 +125,8 @@ onChange = { e => setSearch(e.target.value) }
 
 {
     loading ? (
-        <div style= {{
-        display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                gap: 12
-    }
-}>
-{ [1, 2, 3, 4, 5, 6, 7, 8].map(i => <Skeleton key={ i } height = { 90} radius = { 14} />) }
+        <div className="vcard-grid" style = {{ marginBottom: 0 }}>
+{ [1, 2, 3, 4, 5, 6, 7, 8].map(i => <Skeleton key={ i } height = { 200} radius = { 16} />) }
     </div>
       ) : filtered.length === 0 ? (
     <div className= "card" >
@@ -181,104 +168,90 @@ action = { canEdit && items.length === 0 ? (
 }} />
     </div>
 
-    < div style = {{
-    display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-            gap: 12
-}}>
+    < div className = "vcard-grid" style = {{ marginBottom: 0 }}>
+
     <AnimatePresence>
     {
-        list.map((s, i) => (
+        list.map((s, i) => {
+            const assigned = s.assignedCount || 0;
+            return (
             <motion.div
                       key= { s.skillId }
                       initial = {{ opacity: 0, y: 8 }}
 animate = {{ opacity: 1, y: 0 }}
 exit = {{ opacity: 0, scale: 0.95 }}
 transition = {{ delay: i * 0.02 }}
-style = {{
-    background: 'var(--surface)',
-        border: '1px solid var(--border)',
-            borderRadius: 'var(--r-lg)',
-                padding: 16,
-                    display: 'flex',
-                        flexDirection: 'column',
-                            gap: 10,
-                                transition: 'all .15s'
-}}
-onMouseEnter = { el => {
-    el.currentTarget.style.borderColor = 'var(--primary)';
-    el.currentTarget.style.transform = 'translateY(-2px)';
-}}
-onMouseLeave = { el => {
-    el.currentTarget.style.borderColor = 'var(--border)';
-    el.currentTarget.style.transform = 'none';
-}}
+className = {`vcard is-static ${toneFor(s.level)}`}
                     >
-    <div style={ { display: 'flex', alignItems: 'flex-start', gap: 10 } }>
-        <div style={
-            {
-                width: 36, height: 36,
-                    borderRadius: 'var(--r-md)',
-                        background: 'color-mix(in srgb, var(--primary) 15%, transparent)',
-                            color: 'var(--primary)',
-                                display: 'flex',
-                                    alignItems: 'center',
-                                        justifyContent: 'center',
-                                            flexShrink: 0
-            }
-}>
-    <Award size={ 18 } />
+    <div className= {`vcard-corner cool-tip ${assigned ? '' : 'is-muted'}`}
+    data-tip = {
+        assigned
+            ? `Назначен ${assigned} ${plural(assigned, ['волонтёру', 'волонтёрам', 'волонтёрам'])}. Уровень: ${s.level}.`
+            : 'Пока не назначен ни одному волонтёру. Добавьте навык волонтёру на его карточке.'
+    }
+>
+    <Users size={ 14 } />
         </div>
-        < div style = {{ flex: 1, minWidth: 0 }}>
-            <div style={
-                {
-                    fontFamily: 'var(--font-head)',
-                        fontWeight: 700,
-                            fontSize: 14,
-                                lineHeight: 1.3,
-                                    overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                            display: '-webkit-box',
-                                                WebkitLineClamp: 2,
-                                                    WebkitBoxOrient: 'vertical'
-                }
-} title = { s.skillName } >
-{ s.skillName }
+
+    < div className = "vcard-head" >
+        <div className="vcard-avatar" >
+            { (() => { const Icon = iconFor(s.level); return <Icon size={ 22} strokeWidth = { 2.2} />; })() }
+        </div>
+            < div className = "vcard-main" >
+                <div className="vcard-name" title = { s.skillName } > { s.skillName } </div>
+                    < div className = "vcard-sub" >
+                        <Users size={ 12 } />
+<span>
+{
+    assigned > 0
+    ? `Есть у ${assigned} ${plural(assigned, ['волонтёра', 'волонтёров', 'волонтёров'])}`
+        : 'Никому не назначен'
+}
+</span>
+    </div>
+    < div className = "vcard-pills" >
+        <Badge variant={ levelVariant(s.level) }> { s.level } </Badge>
     </div>
     </div>
+    </div>
+
+    < div className = "power-row" >
+        <div className="power-bar" >
+            <div className="power-fill" style = {{
+    width: `${Math.min(100, Math.max(6, assigned * 14))}%`
+}} />
+    </div>
+    < span className = "power-num" >
+{
+    assigned > 0
+    ? `${assigned} ${plural(assigned, ['волонтёр', 'волонтёра', 'волонтёров'])}`
+    : 'не назначен'
+}
+</span>
+    </div>
+
+    < div className = "vcard-foot" >
+        <div className="vcard-id" >
+            <Target size={ 12 } />
+                < span > ID #{ s.skillId } </span>
+                </div>
+                < div className = "vcard-actions" >
 {
     isAdmin && (
         <button
                             className="btn btn-icon btn-danger"
-    onClick = {() => handleDelete(s.skillId)
-}
-title = "Удалить"
+    onClick = {(e) => { e.stopPropagation(); handleDelete(s.skillId); }}
+title = "Удалить навык"
+    aria-label = "Удалить навык"
     >
-    <Trash2 size={ 13 } />
+    <Trash2 size={ 14 } />
         </button>
                         )}
 </div>
-
-    < div style = {{
-    display: 'flex',
-        alignItems: 'center',
-            gap: 6,
-                fontSize: 12,
-                    color: 'var(--text-2)',
-                        paddingTop: 10,
-                            borderTop: '1px solid var(--border)'
-}}>
-    <Users size={ 13 } style = {{ color: 'var(--text-3)' }} />
-        <span>
-{
-    s.assignedCount > 0
-    ? `${s.assignedCount} ${s.assignedCount === 1 ? 'волонтёр' : s.assignedCount < 5 ? 'волонтёра' : 'волонтёров'}`
-    : 'никому не назначен'
-}
-</span>
     </div>
     </motion.div>
-                  ))}
+            );
+          })}
 </AnimatePresence>
     </div>
     </div>

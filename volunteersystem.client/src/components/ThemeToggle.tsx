@@ -9,7 +9,7 @@ interface Props {
 export default function ThemeToggle({ size = 16, variant = 'icon' }: Props) {
   const { theme, toggleTheme } = useTheme();
 
-  const label = theme === 'dark' ? 'ключить светлую тему' : 'ключить тёмную тему';
+  const label = theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему';
   const icon = theme === 'dark' ? <Sun size={size} /> : <Moon size={size} />;
 
   if (variant === 'full') {

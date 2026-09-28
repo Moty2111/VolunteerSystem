@@ -3,6 +3,12 @@ using Microsoft.Data.SqlClient;
 
 namespace VolunteerSystem.Server.Data;
 
+/// <summary>
+/// Инициализация БД при первом запуске:
+/// 1) создаёт БД IS_Volunteer вместе со схемой (таблицы, индексы, триггеры, представления, процедуры);
+/// 2) всегда проверяет, заполнена ли БД тестовыми данными, и добавляет их при необходимости.
+/// Пароли пользователей хранятся и сравниваются открытым текстом (требование курсового).
+/// </summary>
 public static class DbInitializer
 {
     public static async Task InitializeAsync(IConfiguration config, ILogger logger)
@@ -11,52 +17,97 @@ public static class DbInitializer
         var builder = new SqlConnectionStringBuilder(connString);
         var targetDb = builder.InitialCatalog;
 
-        // Проверяем — есть ли уже такая БД
+        // ----------------------------------------------------------
+        // 1. Существует ли уже БД?
+        // ----------------------------------------------------------
         builder.InitialCatalog = "master";
         var masterConn = builder.ConnectionString;
 
+        var dbExists = false;
         await using (var conn = new SqlConnection(masterConn))
         {
             await conn.OpenAsync();
             await using var cmd = new SqlCommand(
                 "SELECT 1 FROM sys.databases WHERE name = @name", conn);
             cmd.Parameters.AddWithValue("@name", targetDb);
-            var exists = await cmd.ExecuteScalarAsync() != null;
-            if (exists)
-            {
-                logger.LogInformation("БД {Db} уже существует — инициализация не требуется", targetDb);
-                return;
-            }
+            dbExists = await cmd.ExecuteScalarAsync() != null;
         }
 
-        logger.LogInformation("БД {Db} не найдена — создаём из встроенного скрипта…", targetDb);
-
-        var batches = SplitByGo(BootstrapScript);
-
-        await using (var conn = new SqlConnection(masterConn))
+        // ----------------------------------------------------------
+        // 2. Создаём схему, если БД нет
+        // ----------------------------------------------------------
+        if (!dbExists)
         {
-            await conn.OpenAsync();
-            foreach (var raw in batches)
-            {
-                var batch = raw.Trim();
-                if (batch.Length == 0) continue;
-
-                await using var cmd = new SqlCommand(batch, conn) { CommandTimeout = 180 };
-                try
-                {
-                    await cmd.ExecuteNonQueryAsync();
-                }
-                catch (SqlException ex)
-                {
-                    logger.LogError(ex,
-                        "Ошибка при выполнении батча:\n{Batch}",
-                        batch.Length > 400 ? batch[..400] + "…" : batch);
-                    throw;
-                }
-            }
+            logger.LogInformation("БД {Db} не найдена — создаём схему из встроенного скрипта…", targetDb);
+            await RunBatchesAsync(masterConn, SchemaScript, logger);
+            logger.LogInformation("Схема БД {Db} успешно создана", targetDb);
+        }
+        else
+        {
+            logger.LogInformation("БД {Db} уже существует", targetDb);
         }
 
-        logger.LogInformation("БД {Db} успешно создана и заполнена тестовыми данными", targetDb);
+        // ----------------------------------------------------------
+        // 3. Тестовые данные (идемпотентно: добавляем только если пусто)
+        // ----------------------------------------------------------
+        var dataBuilder = new SqlConnectionStringBuilder(connString);
+        var dataConn = dataBuilder.ConnectionString;
+
+        var needsSeed = await IsEmptyAsync(dataConn, logger);
+        if (needsSeed)
+        {
+            logger.LogInformation("БД {Db} пуста — заполняем тестовыми данными…", targetDb);
+            await RunBatchesAsync(dataConn, SeedScript, logger);
+            logger.LogInformation("БД {Db} успешно заполнена тестовыми данными", targetDb);
+        }
+        else
+        {
+            logger.LogInformation("Тестовые данные в БД {Db} уже присутствуют", targetDb);
+        }
+    }
+
+    /// <summary>БД считается незаполненной, если в ней нет ни ролей, ни пользователей.</summary>
+    private static async Task<bool> IsEmptyAsync(string connString, ILogger logger)
+    {
+        try
+        {
+            await using var conn = new SqlConnection(connString);
+            await conn.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT CASE WHEN EXISTS (SELECT 1 FROM Role) AND EXISTS (SELECT 1 FROM SystemUser) " +
+                "THEN 0 ELSE 1 END", conn);
+            return (int)(await cmd.ExecuteScalarAsync())! == 1;
+        }
+        catch (SqlException ex)
+        {
+            logger.LogWarning(ex, "Не удалось проверить наполненность БД — пробуем заполнить данные");
+            return true;
+        }
+    }
+
+    private static async Task RunBatchesAsync(string connString, string script, ILogger logger)
+    {
+        await using var conn = new SqlConnection(connString);
+        await conn.OpenAsync();
+
+        foreach (var raw in SplitByGo(script))
+        {
+            var batch = raw.Trim();
+            if (batch.Length == 0) continue;
+
+            await using var cmd = new SqlCommand(batch, conn) { CommandTimeout = 180 };
+            try
+            {
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                logger.LogError(ex,
+                    "Ошибка при выполнении батча:\n{Batch}",
+                    batch.Length > 400 ? batch[..400] + "…" : batch);
+                throw;
+            }
+        }
     }
 
     private static IEnumerable<string> SplitByGo(string script)
@@ -79,11 +130,12 @@ public static class DbInitializer
     }
 
     // ============================================================
-    // Встроенный SQL-скрипт (raw string literal, .NET 10 / C# 13+)
+    // 1) СХЕМА БД (только структура, без данных)
     // ============================================================
-    private const string BootstrapScript = """
+    private const string SchemaScript = """
         -- ============================================================
-        -- Создание БД IS_Volunteer и заполнение тестовыми данными
+        -- Создание БД IS_Volunteer: таблицы, индексы, триггеры,
+        -- представления и хранимые процедуры
         -- ============================================================
         CREATE DATABASE IS_Volunteer;
         GO
@@ -134,7 +186,7 @@ public static class DbInitializer
         );
         GO
 
-        -- 3. Пользователи системы
+        -- 3. Пользователи системы (password_hash хранит пароль открытым текстом)
         CREATE TABLE SystemUser (
             user_id       INT PRIMARY KEY IDENTITY(1,1),
             volunteer_id  INT           NULL,
@@ -279,7 +331,7 @@ public static class DbInitializer
         END;
         GO
 
-        -- 11.2. Медкнижка для соц/благотв./образовательных
+        -- 11.2. Медкнижка для соц/благотв./образовательных мероприятий
         CREATE TRIGGER trg_assignment_medbook
         ON Assignment
         AFTER INSERT, UPDATE
@@ -442,8 +494,18 @@ public static class DbInitializer
             ORDER BY rating;
         END;
         GO
+        """;
 
+    // ============================================================
+    // 2) ТЕСТОВЫЕ ДАННЫЕ (пароли — открытым текстом, без хэширования)
+    // ============================================================
+    private const string SeedScript = """
+        SET NOCOUNT ON;
+        GO
+
+        -- ============================================================
         -- 14.1. Справочники
+        -- ============================================================
         INSERT INTO Role (role_name) VALUES
             (N'Координатор'), (N'Помощник'), (N'Водитель'),
             (N'Медик'), (N'Организатор'), (N'Участник');
@@ -465,61 +527,109 @@ public static class DbInitializer
             (N'Веб-разработка',            N'Профессиональный');
         GO
 
-        -- 14.2. Волонтёры
+        -- ============================================================
+        -- 14.2. Волонтёры (даты медкнижек — относительно сегодня)
+        -- ============================================================
         INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
         VALUES
-            (N'Иванов Иван Иванович',     '2000-05-14', N'+79001112233', N'ivanov@mail.ru',     N'Москва',          '2026-12-31', 1),
-            (N'Петрова Анна Сергеевна',   '1998-11-02', N'+79004445566', N'petrova@mail.ru',    N'Санкт-Петербург', '2025-06-30', 1),
-            (N'Сидоров Пётр Алексеевич',  '2005-03-21', N'+79007778899', N'sidorov@mail.ru',    N'Москва',          NULL,         1),
-            (N'Кузнецова Мария Олеговна', '2001-07-19', N'+79002223344', N'kuznetsova@mail.ru', N'Казань',          '2027-01-15', 1);
+            (N'Иванов Иван Иванович',     '2000-05-14', N'+79001112233', N'ivanov@mail.ru',     N'Москва',
+                DATEADD(YEAR, 1, GETDATE()), 1),
+            (N'Петрова Анна Сергеевна',   '1998-11-02', N'+79004445566', N'petrova@mail.ru',    N'Санкт-Петербург',
+                DATEADD(MONTH, -3, GETDATE()), 1),
+            (N'Сидоров Пётр Алексеевич',  '2005-03-21', N'+79007778899', N'sidorov@mail.ru',    N'Москва',
+                NULL, 1),
+            (N'Кузнецова Мария Олеговна', '2001-07-19', N'+79002223344', N'kuznetsova@mail.ru', N'Казань',
+                DATEADD(YEAR, 2, GETDATE()), 1),
+            (N'Соколов Дмитрий Павлович', '1996-02-08', N'+79005556677', N'sokolov@mail.ru',    N'Новосибирск',
+                DATEADD(YEAR, 1, GETDATE()), 1),
+            (N'Морозова Елена Викторовна','1999-09-30', N'+79008889900', N'morozova@mail.ru',   N'Казань',
+                DATEADD(YEAR, 1, GETDATE()), 1);
         GO
 
-        -- 14.3. Пользователи (пароли в открытом виде — для отладки!)
+        -- ============================================================
+        -- 14.3. Пользователи (пароли в открытом виде — без хэширования)
+        -- ============================================================
         INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role) VALUES
-            (NULL, N'admin',       N'admin123',       N'Администратор'),
-            (NULL, N'manager1',    N'manager1123',    N'Менеджер'),
-            (1,    N'ivanov',      N'ivanov123',      N'Волонтёр'),
-            (2,    N'petrova',     N'petrova123',     N'Волонтёр'),
-            (3,    N'sidorov',     N'sidorov123',     N'Волонтёр'),
-            (4,    N'kuznetsova',  N'kuznetsova123',  N'Волонтёр');
+            (NULL, N'admin',       N'admin123',      N'Администратор'),
+            (NULL, N'manager1',    N'manager1123',   N'Менеджер'),
+            (1,    N'ivanov',      N'ivanov123',     N'Волонтёр'),
+            (2,    N'petrova',     N'petrova123',    N'Волонтёр'),
+            (3,    N'sidorov',     N'sidorov123',    N'Волонтёр'),
+            (4,    N'kuznetsova',  N'kuznetsova123', N'Волонтёр'),
+            (5,    N'sokolov',     N'sokolov123',    N'Волонтёр'),
+            (6,    N'morozova',    N'morozova123',   N'Волонтёр');
         GO
 
+        -- ============================================================
         -- 14.4. Навыки волонтёров
+        -- ============================================================
         INSERT INTO Volunteer_Skill (volunteer_id, skill_id, year_confirmed) VALUES
             (1, 3, 2023), (1, 4, 2022), (1, 5, 2024),
             (2, 1, 2021), (2, 6, 2023),
             (3, 2, 2024),
-            (4, 3, 2024), (4, 7, 2023), (4, 8, 2024);
+            (4, 3, 2024), (4, 7, 2023), (4, 8, 2024),
+            (5, 4, 2020), (5, 3, 2022),
+            (6, 1, 2022), (6, 5, 2024);
         GO
 
-        -- 14.5. Мероприятия
-        INSERT INTO Event (event_name, date_start, date_end, location, event_type_id, status, coordinator_id) VALUES
-            (N'Субботник в парке',         '2026-04-15 09:00', '2026-04-15 14:00', N'Парк Сокольники', 2, N'Завершено',     2),
-            (N'Помощь детскому дому',      '2026-05-20 10:00', '2026-05-20 18:00', N'Детский дом №5',  1, N'Запланировано', 2),
-            (N'Благотворительный концерт', '2026-06-10 17:00', '2026-06-10 22:00', N'ДК Заря',         4, N'Запланировано', 2);
+        -- ============================================================
+        -- 14.5. Мероприятия (даты относительно сегодня)
+        --   1 — завершённое (позавчера), 2/3 — будущие,
+        --   4 — идёт сегодня, 5 — через месяц, 6 — отменённое
+        -- ============================================================
+        DECLARE @yesterday DATETIME = DATEADD(DAY, -21, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        DECLARE @today     DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+        DECLARE @soon      DATETIME = DATEADD(DAY, 14, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+        DECLARE @later     DATETIME = DATEADD(DAY, 32, CAST(CAST(GETDATE() AS DATE) AS DATETIME));
+
+        INSERT INTO Event (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id) VALUES
+            (N'Субботник в парке',          DATEADD(HOUR, 9,  @yesterday), DATEADD(HOUR, 14, @yesterday),
+                N'Парк Сокольники, Москва', 2, N'Уборка территорий, посадка деревьев и развеска скамеек.', N'Завершено', 2),
+            (N'Помощь детскому дому',       DATEADD(HOUR, 10, @soon),      DATEADD(HOUR, 18, @soon),
+                N'Детский дом №5',          1, N'Развивающие занятия с детьми, мастер-классы и подготовка к празднику.', N'Запланировано', 2),
+            (N'Благотворительный концерт',  DATEADD(HOUR, 17, @later),     DATEADD(HOUR, 22, @later),
+                N'ДК «Заря»',               4, N'Сбор средств для поддержки семей с детьми-инвалидами.', N'Запланировано', 2),
+            (N'Эко-акция «Чистая набережная»', DATEADD(HOUR, 10, @today),  DATEADD(HOUR, 16, @today),
+                N'Набережная озера Пестово', 2, N'Сбор и сортировка отходов, экологическая просветительская программа.', N'Идёт', 2),
+            (N'Спортивный фестиваль',       DATEADD(HOUR, 11, @later),     DATEADD(HOUR, 19, @later),
+                N'Стадион «Динамо»',        5, N'Организация зон, регистрация участников, судейство.', N'Запланировано', 2),
+            (N'Книжная ярмарка',            DATEADD(HOUR, 12, @soon),      DATEADD(HOUR, 20, @soon),
+                N'Центральная библиотека',   3, N'Отменено по организационным причинам.', N'Отменено', 2);
         GO
 
+        -- ============================================================
         -- 14.6. Назначения
+        -- ============================================================
         INSERT INTO Assignment (volunteer_id, event_id, role_id, hours_actual, confirmed) VALUES
             (1, 1, 6, 5.0, 1),
             (2, 1, 1, 5.0, 1),
             (4, 1, 6, 5.0, 1),
             (1, 2, 6, NULL, 0),
-            (4, 2, 6, NULL, 0);
+            (4, 2, 6, NULL, 0),
+            (3, 4, 6, NULL, 0),
+            (5, 4, 5, NULL, 0),
+            (6, 5, 2, NULL, 0);
         GO
 
+        -- ============================================================
         -- 14.7. Партнёры
+        -- ============================================================
         INSERT INTO Partner (partner_name, inn, contact_person, phone, email, support_amount, contract_number, contract_date) VALUES
-            (N'ООО «Добро»',   N'7701234567', N'Смирнов А.А.', N'+74951112233', N'dobro@mail.ru',   150000, N'Д-2026-01', '2026-01-15'),
-            (N'Фонд «Помощь»', N'7809876543', N'Орлова Е.В.',  N'+78123334455', N'pomosh@mail.ru',  200000, N'П-2026-03', '2026-02-20');
+            (N'ООО «Добро»',   N'7701234567', N'Смирнов А.А.', N'+74951112233', N'dobro@mail.ru',   150000, N'Д-2026-01', DATEADD(MONTH, -8, GETDATE())),
+            (N'Фонд «Помощь»', N'7809876543', N'Орлова Е.В.',  N'+78123334455', N'pomosh@mail.ru',  200000, N'П-2026-03', DATEADD(MONTH, -6, GETDATE())),
+            (N'Компания «Зелёный город»', N'7765432109', N'Кузнечев И.И.', N'+74957778899', N'green@mail.ru', 90000, N'З-2026-05', DATEADD(MONTH, -2, GETDATE()));
         GO
 
+        -- ============================================================
         -- 14.8. Партнёры ↔ Мероприятия
+        -- ============================================================
         INSERT INTO Event_Partner (event_id, partner_id, amount) VALUES
             (1, 1, 50000),
             (2, 1, 30000),
             (2, 2, 70000),
-            (3, 2, 100000);
+            (3, 2, 100000),
+            (4, 3, 40000),
+            (5, 3, 50000);
         GO
         """;
 }

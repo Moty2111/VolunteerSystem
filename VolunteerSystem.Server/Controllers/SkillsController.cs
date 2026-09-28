@@ -20,7 +20,6 @@ public class SkillsController : ControllerBase
 
     // GET: /api/skills
     [HttpGet]
-    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<SkillDto>>> GetAll()
     {
         var list = await _db.Skills
@@ -78,6 +77,14 @@ public class SkillsController : ControllerBase
     [HttpGet("volunteer/{volunteerId:int}")]
     public async Task<ActionResult<IEnumerable<VolunteerSkillDto>>> GetVolunteerSkills(int volunteerId)
     {
+        // Волонтёр видит только свои навыки
+        if (User.IsInRole("Волонтёр"))
+        {
+            var ownId = User.FindFirst("VolunteerId")?.Value;
+            if (ownId is null || int.Parse(ownId) != volunteerId)
+                return Forbid();
+        }
+
         var list = await _db.Volunteer_Skills
             .Where(vs => vs.volunteer_id == volunteerId)
             .Include(vs => vs.skill)

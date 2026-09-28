@@ -85,18 +85,38 @@ public class VolunteersController : ControllerBase
     }
 
     // PUT: /api/volunteers/5
+    // Редактирование: админ/менеджер — любого, волонтёр — только себя
     [HttpPut("{id:int}")]
-    [Authorize(Roles = "Администратор,Менеджер")]
+    [Authorize]
     public async Task<IActionResult> Update(int id, [FromBody] UpdateVolunteerDto dto)
     {
+        var isAdminOrManager = User.IsInRole("Администратор") || User.IsInRole("Менеджер");
+
+        if (!isAdminOrManager)
+        {
+            var ownId = User.FindFirst("VolunteerId")?.Value;
+            if (ownId is null || int.Parse(ownId) != id)
+                return Forbid();
+        }
+
         var v = await _db.Volunteers.FindAsync(id);
         if (v is null) return NotFound();
 
+        if (!string.IsNullOrWhiteSpace(dto.Email) &&
+            !string.Equals(v.email, dto.Email, StringComparison.OrdinalIgnoreCase) &&
+            await _db.Volunteers.AnyAsync(x => x.email == dto.Email))
+            return Conflict(new { message = "Email уже используется" });
+
         v.full_name = dto.FullName;
         v.phone = dto.Phone;
+        if (!string.IsNullOrWhiteSpace(dto.Email))
+            v.email = dto.Email.Trim();
         v.city = dto.City;
         v.med_book_valid_until = dto.MedBookValidUntil;
-        v.is_active = dto.IsActive;
+
+        // Статус активности меняют только администратор и менеджер
+        if (isAdminOrManager)
+            v.is_active = dto.IsActive;
 
         await _db.SaveChangesAsync();
         return NoContent();

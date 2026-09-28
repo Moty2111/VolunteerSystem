@@ -1,6 +1,6 @@
 ﻿import type { ReactNode, HTMLAttributes } from 'react';
 
-interface Props extends HTMLAttributes<HTMLDivElement> {
+interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   children: ReactNode;
   title?: ReactNode;
   action?: ReactNode;

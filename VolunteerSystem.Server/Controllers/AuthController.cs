@@ -117,4 +117,30 @@ public class AuthController : ControllerBase
             volunteerId = user.volunteer_id
         });
     }
+
+    // POST: /api/auth/change-password — смена пароля (открытым текстом, без хэширования)
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
+    {
+        var idClaim = User.FindFirst("UserId")?.Value;
+        if (idClaim is null) return Unauthorized();
+
+        var user = await _db.SystemUsers.FindAsync(int.Parse(idClaim));
+        if (user is null) return NotFound();
+
+        if (user.password_hash != req.CurrentPassword)
+            return BadRequest(new { message = "Текущий пароль указан неверно" });
+
+        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
+            return BadRequest(new { message = "Новый пароль должен содержать минимум 6 символов" });
+
+        if (req.NewPassword == req.CurrentPassword)
+            return BadRequest(new { message = "Новый пароль не должен совпадать со старым" });
+
+        user.password_hash = req.NewPassword; // хранение открытым текстом — требование курсового
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Пароль успешно обновлён" });
+    }
 }

@@ -1,7 +1,11 @@
 ﻿import { useState, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Users, Calendar, Award, Briefcase, BarChart3, LayoutDashboard } from 'lucide-react';
+import {
+  Search, Users, Calendar, CalendarDays, Award, Briefcase, BarChart3,
+  LayoutDashboard, CheckSquare, UserCog, History, Target
+} from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { volunteersApi } from '../api/volunteers';
 import { eventsApi } from '../api/events';
 import type { Volunteer, EventItem } from '../types';
@@ -22,8 +26,14 @@ interface Item {
 
 export default function CommandPalette({ open, onClose }: Props) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const role = user?.role;
+  const isAdmin = role === 'Администратор';
+  const isStaff = isAdmin || role === 'Менеджер';
+  const isVolunteer = role === 'Волонтёр';
 
   const [query, setQuery] = useState('');
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
@@ -40,7 +50,8 @@ export default function CommandPalette({ open, onClose }: Props) {
     (async () => {
       try {
         const [v, e] = await Promise.all([
-          volunteersApi.getAll({ active: true }),
+          /* список волонтёров — только для тех, у кого есть доступ */
+          isStaff ? volunteersApi.getAll({ active: true }) : Promise.resolve([] as Volunteer[]),
           eventsApi.getAll()
         ]);
         setVolunteers(v);
@@ -49,20 +60,46 @@ export default function CommandPalette({ open, onClose }: Props) {
         /* ignore */
       }
     })();
-  }, [open]);
+  }, [open, isStaff]);
 
-  const pages: Item[] = useMemo(() => [
-    { id: 'p-dash', group: 'Страницы', label: 'ашборд', icon: <LayoutDashboard size={16} />, action: () => navigate('/dashboard') },
-    { id: 'p-vol', group: 'Страницы', label: 'олонтёры', icon: <Users size={16} />, action: () => navigate('/volunteers') },
-    { id: 'p-ev', group: 'Страницы', label: 'ероприятия', icon: <Calendar size={16} />, action: () => navigate('/events') },
-    { id: 'p-sk', group: 'Страницы', label: 'авыки', icon: <Award size={16} />, action: () => navigate('/skills') },
-    { id: 'p-part', group: 'Страницы', label: 'артнёры', icon: <Briefcase size={16} />, action: () => navigate('/partners') },
-    { id: 'p-rep', group: 'Страницы', label: 'тчёты', icon: <BarChart3 size={16} />, action: () => navigate('/reports') }
-  ], [navigate]);
+  const pages: Item[] = useMemo(() => {
+    const list: Item[] = [
+      { id: 'p-dash', group: 'Страницы', label: 'Дашборд', icon: <LayoutDashboard size={16} />, action: () => navigate('/dashboard') },
+      { id: 'p-cal', group: 'Страницы', label: 'Календарь', icon: <CalendarDays size={16} />, action: () => navigate('/calendar') },
+      { id: 'p-ev', group: 'Страницы', label: 'Мероприятия', icon: <Calendar size={16} />, action: () => navigate('/events') }
+    ];
+
+    if (isStaff) {
+      list.push(
+        { id: 'p-vol', group: 'Страницы', label: 'Волонтёры', icon: <Users size={16} />, action: () => navigate('/volunteers') },
+        { id: 'p-asg', group: 'Страницы', label: 'Назначения', icon: <CheckSquare size={16} />, action: () => navigate('/assignments') },
+        { id: 'p-sk', group: 'Страницы', label: 'Навыки', icon: <Award size={16} />, action: () => navigate('/skills') },
+        { id: 'p-rep', group: 'Страницы', label: 'Отчёты', icon: <BarChart3 size={16} />, action: () => navigate('/reports') }
+      );
+    }
+
+    if (isAdmin) {
+      list.push(
+        { id: 'p-part', group: 'Страницы', label: 'Партнёры', icon: <Briefcase size={16} />, action: () => navigate('/partners') },
+        { id: 'p-users', group: 'Страницы', label: 'Учётные записи', icon: <UserCog size={16} />, action: () => navigate('/users') },
+        { id: 'p-audit', group: 'Страницы', label: 'Журнал аудита', icon: <History size={16} />, action: () => navigate('/audit') }
+      );
+    }
+
+    if (isVolunteer) {
+      list.push(
+        { id: 'p-myasg', group: 'Страницы', label: 'Мои назначения', icon: <CheckSquare size={16} />, action: () => navigate('/my-assignments') },
+        { id: 'p-mysk', group: 'Страницы', label: 'Мои навыки', icon: <Award size={16} />, action: () => navigate('/my-skills') },
+        { id: 'p-mypr', group: 'Страницы', label: 'Мой прогресс', icon: <Target size={16} />, action: () => navigate('/my-progress') }
+      );
+    }
+
+    return list;
+  }, [navigate, isStaff, isAdmin, isVolunteer]);
 
   const volItems: Item[] = useMemo(() => volunteers.map(v => ({
     id: `v-${v.volunteerId}`,
-    group: 'олонтёры',
+    group: 'Волонтёры',
     label: v.fullName,
     sub: `${v.city} · ${v.email}`,
     icon: <Users size={16} />,
@@ -71,7 +108,7 @@ export default function CommandPalette({ open, onClose }: Props) {
 
   const evItems: Item[] = useMemo(() => events.map(e => ({
     id: `e-${e.eventId}`,
-    group: 'ероприятия',
+    group: 'Мероприятия',
     label: e.eventName,
     sub: `${new Date(e.dateStart).toLocaleDateString('ru-RU')} · ${e.location}`,
     icon: <Calendar size={16} />,
@@ -163,7 +200,7 @@ export default function CommandPalette({ open, onClose }: Props) {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="оиск волонтёров, мероприятий, разделов…"
+                placeholder="Поиск волонтёров, мероприятий, разделов…"
                 style={{
                   flex: 1,
                   background: 'transparent',
@@ -195,7 +232,7 @@ export default function CommandPalette({ open, onClose }: Props) {
                   color: 'var(--text-3)',
                   fontSize: 13
                 }}>
-                  ичего не найдено
+                  Ничего не найдено
                 </div>
               ) : (
                 Object.entries(groups).map(([group, items]) => (

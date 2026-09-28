@@ -6,8 +6,56 @@ import { skillsApi, type Skill, type VolunteerSkill } from '../api/skills';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
 import { getLevel, getBadges } from '../utils/level';
+import { plural } from '../utils/format';
 import type { Volunteer } from '../types';
 import { Award, Plus, X, MapPin, Phone, Mail, Calendar, Check } from 'lucide-react';
+import {
+    LuStethoscope, LuCar, LuCalendarCheck, LuLanguages, LuCamera, LuMusic,
+    LuUtensils, LuLaptop, LuHandshake, LuUsers, LuTruck, LuPalette,
+    LuMegaphone, LuSprout, LuBaby, LuDog, LuBookOpen, LuMessageCircle,
+    LuClipboardList, LuWrench, LuDumbbell, LuGraduationCap, LuHeart
+} from 'react-icons/lu';
+import type { IconType } from 'react-icons';
+
+/* иконка навыка по названию (react-icons) */
+const skillIcon = (name: string): IconType => {
+    const n = name.toLowerCase();
+    if (/первая помощь|мед|аптечк|health/.test(n)) return LuStethoscope;
+    if (/вод|авто|транспорт|категор|car|drive/.test(n)) return LuCar;
+    if (/мероприят|организ|ивент|координац|событи/.test(n)) return LuCalendarCheck;
+    if (/англ|язык|перевод|lingu/.test(n)) return LuLanguages;
+    if (/фот|виде|съёмк|съемк/.test(n)) return LuCamera;
+    if (/музык|звук|гитар|пиани|вокал/.test(n)) return LuMusic;
+    if (/кулин|готов|кухн|питани|барбекю/.test(n)) return LuUtensils;
+    if (/программ|компьютер|веб|it\b|1с|разработк/.test(n)) return LuLaptop;
+    if (/рукопож|переговор|партнер|партнёр/.test(n)) return LuHandshake;
+    if (/команд|групп|наставни|ментор/.test(n)) return LuUsers;
+    if (/достав|логист|груз|эвакуац/.test(n)) return LuTruck;
+    if (/рисов|дизайн|арт|живопис|краск|иллюстр/.test(n)) return LuPalette;
+    if (/реклам|агитац|привлеч|пиар|宣传/.test(n)) return LuMegaphone;
+    if (/сад|озелен|дерев|растени|эко|садов/.test(n)) return LuSprout;
+    if (/дет|юность|аниматор|детсад/.test(n)) return LuBaby;
+    if (/животн|приют|собак|кошк|vet/.test(n)) return LuDog;
+    if (/учеб|обуч|школ|лекц|курс|тренинг/.test(n)) return LuGraduationCap;
+    if (/психолог|поддержк|слушать|консультац|грепп|кризис/.test(n)) return LuMessageCircle;
+    if (/документ|отчет|бухгалтер|счет|заполн|таблиц/.test(n)) return LuClipboardList;
+    if (/ремонт|инструмент|техник|строитель/.test(n)) return LuWrench;
+    if (/спорт|фитнес|тренер|бег|турнир/.test(n)) return LuDumbbell;
+    return LuHeart;
+};
+
+/* цветовая гамма по уровню (как на странице «Навыки») */
+const toneForLevel = (level: string): string => {
+    switch (level) {
+        case 'Начальный': return 'tone-green';
+        case 'Средний': return 'tone-blue';
+        case 'Профессиональный': return 'tone-gold';
+        case 'A1': case 'A2': return 'tone-green';
+        case 'B1': case 'B2': return 'tone-blue';
+        case 'C1': case 'C2': return 'tone-violet';
+        default: return 'tone-pink';
+    }
+};
 
 interface Props {
     volunteer: Volunteer | null;
@@ -108,8 +156,14 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
                 </span>
 {
     volunteer.medBookValidUntil
-    ? <Badge variant="success" icon = {< Check size = { 11} />}> медкнижка до { volunteer.medBookValidUntil } </Badge>
-              : <Badge variant="danger" > нет медкнижки </Badge>}
+    ? <span className = "cool-tip"
+        data-tip = {`Медкнижка действует до ${volunteer.medBookValidUntil} — допускает участие в мероприятиях с повышенными требованиями.`}>
+        <Badge variant="success" icon={<Check size={11} />}> медкнижка до {volunteer.medBookValidUntil} </Badge>
+    </span>
+              : < span className = "cool-tip"
+        data-tip = "У волонтёра нет медкнижки — участие в мероприятиях с повышенными требованиями ограничено.">
+        <Badge variant="danger"> нет медкнижки </Badge>
+    </span>}
 {
     volunteer.isActive
     ? <Badge variant="success" > активен </Badge>
@@ -165,7 +219,7 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
             color: 'var(--text-3)',
                 marginLeft: 'auto'
 }}>
-{ volunteerSkills.length } { volunteerSkills.length === 1 ? 'навык' : 'навыков' }
+{ volunteerSkills.length } { plural(volunteerSkills.length, ['навык', 'навыка', 'навыков']) }
 </span>
     </h4>
 
@@ -174,42 +228,50 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
         <div className= "loading-state" > <span className="spinner" /> </div>
         ) : (
         <>
-        <div style= {{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }
-}>
-{
-    volunteerSkills.length === 0 && (
-        <p style={ { color: 'var(--text-3)', fontSize: 13, margin: 0 } }>
-            У волонтёра пока нет назначенных навыков
-                </p>
-              )}
-<AnimatePresence>
+        <div className="skill-mini-grid">
     {
-        volunteerSkills.map(vs => (
-            <motion.div
-                    key= { vs.skillId }
-                    initial = {{ opacity: 0, scale: 0.85 }}
-animate = {{ opacity: 1, scale: 1 }}
-exit = {{ opacity: 0, scale: 0.85 }}
-className = "skill-chip"
-    >
-    <span style={ { fontWeight: 600 } }> { vs.skillName } </span>
-        < span className = "level" >
-        { vs.level }{ vs.yearConfirmed ? ` · ${vs.yearConfirmed}` : '' }
-</span>
-{
-    canEdit && (
-        <button
-                        className="remove"
-    onClick = {() => handleRemove(vs.skillId)
-}
-title = "Убрать навык"
-    >
-    <X size={ 12 } />
-        </button>
-                    )}
-</motion.div>
-                ))}
-</AnimatePresence>
+        volunteerSkills.length === 0 && (
+            <p style={ { color: 'var(--text-3)', fontSize: 13, margin: 0, gridColumn: '1 / -1' } }>
+                У волонтёра пока нет назначенных навыков
+            </p>
+        )
+    }
+    <AnimatePresence>
+        {
+            volunteerSkills.map(vs => {
+                const Icon = skillIcon(vs.skillName);
+                return (
+                    <motion.div
+                        key= { vs.skillId }
+                        initial = {{ opacity: 0, scale: 0.85 }}
+                        animate = {{ opacity: 1, scale: 1 }}
+                        exit = {{ opacity: 0, scale: 0.85 }}
+                        className = {`skill-mini ${toneForLevel(vs.level)}`}
+                    >
+                        <span className="skill-mini-icon"><Icon size={19} /></span>
+                        < div className = "skill-mini-body" >
+                            <div className="skill-mini-name" title = { vs.skillName }> { vs.skillName } </div>
+                            < div className = "skill-mini-meta" >
+                                <span className="skill-mini-level"> { vs.level } </span>
+                                { vs.yearConfirmed && < span > · { vs.yearConfirmed } </span>}
+                            </div>
+                        </div>
+                        {
+                            canEdit && (
+                                <button
+                                    className="skill-mini-remove"
+                                    onClick = {() => handleRemove(vs.skillId)}
+                                    title = "Убрать навык"
+                                    aria-label = "Убрать навык"
+                                >
+                                    <X size={11} />
+                                </button>
+                            )}
+                    </motion.div>
+                );
+            })
+        }
+    </AnimatePresence>
     </div>
 
 {

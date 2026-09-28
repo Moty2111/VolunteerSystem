@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { eventsApi } from '../api/events';
+import { notifStore } from '../utils/notifStore';
 import Topbar from './Topbar';
+import BottomNav from './BottomNav';
 import CommandPalette from './CommandPalette';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
 import {
     LayoutDashboard, Users, Calendar, CheckSquare, Award, Briefcase,
-    BarChart3, LogOut, ChevronsLeft, ChevronsRight, UserCircle
+    BarChart3, LogOut, ChevronsLeft, ChevronsRight, UserCircle, Bell,
+    CalendarDays, History, UserCog, Target
 } from 'lucide-react';
 
 export default function Layout() {
@@ -19,6 +23,7 @@ export default function Layout() {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
     const [eventCount, setEventCount] = useState<number | null>(null);
+    const [unread, setUnread] = useState(notifStore.get());
 
     const isAdmin = user?.role === 'Администратор';
     const isManager = user?.role === 'Менеджер';
@@ -47,6 +52,8 @@ export default function Layout() {
 
     useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
+    useEffect(() => notifStore.sub(setUnread), []);
+
     const handleLogout = () => { logout(); navigate('/login'); };
 
     return (
@@ -57,11 +64,12 @@ export default function Layout() {
 
                     {!collapsed && (
                         <button
-              className="icon-btn"
+              className="icon-btn cool-tip tip-below"
     style = {{ marginLeft: 'auto' }
 }
 onClick = {() => setCollapsed(true)}
-title = "Свернуть меню"
+data-tip = "Свернуть меню"
+aria-label = "Свернуть меню"
     >
     <ChevronsLeft size={ 16 } />
         </button>
@@ -69,15 +77,16 @@ title = "Свернуть меню"
 
 {
     collapsed && (
-        <button
-              className="icon-btn"
-    style = {{ position: 'absolute', bottom: -18, right: 12, zIndex: 2 }
-}
-onClick = {() => setCollapsed(false)}
-title = "Развернуть меню"
+        <div className="sidebar-collapse-row" >
+            <button
+                  className="icon-btn"
+    onClick = {() => setCollapsed(false)}
+data-tip = "Развернуть меню"
+    aria-label = "Развернуть меню"
     >
     <ChevronsRight size={ 16 } />
         </button>
+            </div>
           )}
 </div>
 
@@ -86,6 +95,11 @@ title = "Развернуть меню"
             < NavLink to = "/dashboard" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <LayoutDashboard />
                 < span className = "hide-collapsed" > Дашборд </span>
+                    </NavLink>
+
+            < NavLink to = "/calendar" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                <CalendarDays />
+                < span className = "hide-collapsed" > Календарь </span>
                     </NavLink>
 
 {
@@ -132,7 +146,24 @@ title = "Развернуть меню"
     <BarChart3 />
     < span className = "hide-collapsed" > Отчёты </span>
         </NavLink>
+
+{
+    isAdmin && (
+        <>
+        <div className="sidebar-section" > { collapsed? '•': 'Администрирование' } </div>
+
+            < NavLink to = "/users" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                <UserCog />
+                < span className = "hide-collapsed" > Учётные записи </span>
+                    </NavLink>
+
+        <NavLink to="/audit" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+            <History />
+            < span className = "hide-collapsed" > Журнал аудита </span>
+                </NavLink>
         </>
+              )}
+          </>
           )}
 
 {
@@ -155,15 +186,34 @@ title = "Развернуть меню"
         <CheckSquare />
         < span className = "hide-collapsed" > Мои назначения </span>
             </NavLink>
+
+    < NavLink to = "/my-skills" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <Award />
+        < span className = "hide-collapsed" > Мои навыки </span>
+            </NavLink>
+
+        < NavLink to = "/my-progress" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+            <Target />
+            < span className = "hide-collapsed" > Мой прогресс </span>
+                </NavLink>
             </>
           )}
 
 <div className="sidebar-section" > { collapsed? '•': 'Аккаунт' } </div>
-    < NavLink to = "/profile" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-        <UserCircle />
-        < span className = "hide-collapsed" > Мой профиль </span>
+    < NavLink to = "/notifications" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+        <Bell />
+        < span className = "hide-collapsed" > Уведомления </span>
+{
+    !collapsed && unread > 0 && (
+        <span className="link-count link-count-hot"> { unread > 99 ? '99+' : unread } </span>
+    )
+}
             </NavLink>
-            </nav>
+            < NavLink to = "/profile" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+                <UserCircle />
+                < span className = "hide-collapsed" > Мой профиль </span>
+                    </NavLink>
+                    </nav>
 
             < div className = "sidebar-user" >
                 <div className="sidebar-user-info" >
@@ -206,9 +256,22 @@ onToggleSidebar = {() => setMobileOpen(o => !o)}
 sidebarCollapsed = { collapsed }
     />
     <div className="main-content" >
-        <Outlet />
+        <AnimatePresence mode = "wait" >
+        <motion.div
+            key = { location.pathname }
+    initial = {{ opacity: 0, y: 10 }
+}
+    animate = {{ opacity: 1, y: 0 }}
+exit = {{ opacity: 0, y: -8 }}
+transition = {{ duration: 0.18, ease: 'easeOut' }}
+        >
+    <Outlet />
+        </motion.div>
+            </AnimatePresence>
         </div>
         </main>
+
+        < BottomNav />
 
         < CommandPalette open = { searchOpen } onClose = {() => setSearchOpen(false)} />
             </div>

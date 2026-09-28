@@ -1,9 +1,13 @@
 ﻿import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Plus, ChevronDown, Menu, Check, Handshake, Calendar as CalIcon } from 'lucide-react';
+import { Search, Bell, Plus, ChevronDown, Menu, Check, Handshake, Users, Calendar as CalIcon, UserCircle, Sun, Moon, LogOut, Award } from 'lucide-react';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { notifStore } from '../utils/notifStore';
 import { notificationsApi, type Notification } from '../api/notifications';
+
 
 interface Props {
   onOpenSearch: () => void;
@@ -12,16 +16,23 @@ interface Props {
 }
 
 const TITLES: Record<string, string> = {
-  '/dashboard': 'ашборд',
-  '/volunteers': 'олонтёры',
-  '/events': 'ероприятия',
-  '/assignments': 'азначения',
-  '/skills': 'авыки',
-  '/partners': 'артнёры',
-  '/reports': 'тчёты',
-  '/my-assignments': 'ои назначения',
-  '/profile': 'ой профиль'
+  '/dashboard': 'Дашборд',
+  '/calendar': 'Календарь',
+  '/volunteers': 'Волонтёры',
+  '/events': 'Мероприятия',
+  '/assignments': 'Назначения',
+  '/skills': 'Навыки',
+  '/partners': 'Партнёры',
+  '/reports': 'Отчёты',
+  '/users': 'Учётные записи',
+  '/audit': 'Журнал аудита',
+  '/my-assignments': 'Мои назначения',
+  '/my-skills': 'Мои навыки',
+  '/my-progress': 'Мой прогресс',
+  '/profile': 'Мой профиль',
+  '/notifications': 'Уведомления'
 };
+
 
 const kindIcon = (kind: Notification['kind']) => {
   switch (kind) {
@@ -43,22 +54,25 @@ const kindColor = (kind: Notification['kind']) => {
 
 const kindText = (kind: Notification['kind']) => {
   switch (kind) {
-    case 'confirm': return 'одтверждение';
-    case 'partner': return 'овый партнёр';
+    case 'confirm': return 'Подтверждение';
+    case 'partner': return 'Новый партнёр';
     case 'event': return 'Скоро мероприятие';
-    default: return 'азначение';
+    default: return 'Назначение';
   }
 };
 
 export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed }: Props) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [notifOpen, setNotifOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const notifRef = useRef<HTMLDivElement>(null);
   const createRef = useRef<HTMLDivElement>(null);
+  const avatarRef = useRef<HTMLDivElement>(null);
 
   const currentTitle = TITLES[location.pathname] || 'Страница';
   const isHome = location.pathname === '/dashboard';
@@ -68,6 +82,7 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
       try {
         const list = await notificationsApi.getAll();
         setNotifications(list);
+        notifStore.set(list.length);
       } catch { /* ignore */ }
     })();
   }, []);
@@ -76,28 +91,30 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
     const onClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
       if (createRef.current && !createRef.current.contains(e.target as Node)) setCreateOpen(false);
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const canCreate = user?.role === 'дминистратор' || user?.role === 'енеджер';
 
-  const toggleLabel = sidebarCollapsed ? 'азвернуть меню' : 'Свернуть меню';
+  const canCreate = user?.role === 'Администратор' || user?.role === 'Менеджер';
+
+  const toggleLabel = sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню';
 
   return (
     <header className="topbar">
       <button
-        className="icon-btn mobile-only"
+        className="icon-btn mobile-only cool-tip tip-below"
         onClick={onToggleSidebar}
         aria-label={toggleLabel}
-        title="еню"
+        data-tip={toggleLabel}
       >
         <Menu size={18} />
       </button>
 
       <nav className="breadcrumbs" aria-label="Хлебные крошки">
-        <Link to="/dashboard">лавная</Link>
+        <Link to="/dashboard">Главная</Link>
         {!isHome && (
           <>
             <span className="sep">/</span>
@@ -108,14 +125,14 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
 
       <button className="search-trigger" onClick={onOpenSearch}>
         <Search size={15} />
-        <span>оиск по системе…</span>
+        <span>Поиск по системе…</span>
         <kbd>Ctrl K</kbd>
       </button>
 
       {canCreate && (
         <div style={{ position: 'relative' }} ref={createRef}>
           <button className="btn btn-primary btn-sm" onClick={() => setCreateOpen(o => !o)}>
-            <Plus size={15} /> Создать <ChevronDown size={13} style={{ marginLeft: -2 }} />
+            <Plus size={15} /> <span className="btn-label">Создать</span> <ChevronDown size={13} style={{ marginLeft: -2 }} />
           </button>
           <AnimatePresence>
             {createOpen && (
@@ -138,11 +155,12 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                 }}
               >
                 {[
-                  { label: 'ероприятие', path: '/events', emoji: '📅' },
-                  { label: 'олонтёр', path: '/volunteers', emoji: '👤' },
-                  { label: 'артнёр', path: '/partners', emoji: '🤝', adminOnly: true }
+                  { label: 'Мероприятие', path: '/events', Icon: CalIcon, color: 'var(--primary)' },
+                  { label: 'Волонтёр', path: '/volunteers', Icon: Users, color: 'var(--accent)' },
+                  { label: 'Навык', path: '/skills', Icon: Award, color: 'var(--warning)' },
+                  { label: 'Партнёр', path: '/partners', Icon: Handshake, color: 'var(--info)', adminOnly: true }
                 ]
-                  .filter(o => !o.adminOnly || user?.role === 'дминистратор')
+                  .filter(o => !o.adminOnly || user?.role === 'Администратор')
                   .map(o => (
                     <button
                       key={o.path}
@@ -166,7 +184,16 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                       onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <span style={{ fontSize: 16 }}>{o.emoji}</span> {o.label}
+                      <span style={{
+                        display: 'inline-flex',
+                        width: 26, height: 26, borderRadius: 8,
+                        alignItems: 'center', justifyContent: 'center',
+                        color: o.color,
+                        background: `color-mix(in srgb, ${o.color} 15%, transparent)`
+                      }}>
+                        <o.Icon size={14} />
+                      </span> {o.label}
+
                     </button>
                   ))}
               </motion.div>
@@ -177,10 +204,12 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
 
       <div style={{ position: 'relative' }} ref={notifRef}>
         <button
-          className="icon-btn notif-btn"
+          className="icon-btn notif-btn cool-tip tip-below tip-edge-right"
           onClick={() => setNotifOpen(o => !o)}
-          title="ведомления"
+          aria-label="Уведомления"
+          data-tip="Уведомления"
         >
+
           <Bell size={16} />
           {notifications.length > 0 && <span className="dot" />}
         </button>
@@ -211,7 +240,7 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                 justifyContent: 'space-between',
                 alignItems: 'center'
               }}>
-                <strong style={{ fontSize: 14 }}>ведомления</strong>
+                <strong style={{ fontSize: 14 }}>Уведомления</strong>
                 <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
                   {notifications.length} новых
                 </span>
@@ -219,7 +248,7 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
               <div style={{ maxHeight: 400, overflowY: 'auto' }}>
                 {notifications.length === 0 && (
                   <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-                    ведомлений нет
+                    Уведомлений нет
                   </div>
                 )}
                 {notifications.map(n => (
@@ -270,11 +299,55 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                 <button
                   className="btn btn-ghost btn-sm"
                   style={{ width: '100%' }}
-                  onClick={() => { setNotifOpen(false); navigate('/events'); }}
+                  onClick={() => { setNotifOpen(false); navigate('/notifications'); }}
                 >
-                  оказать все
+                  Все уведомления и настройки
                 </button>
               </div>
+
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div style={{ position: 'relative' }} ref={avatarRef}>
+        <button
+          className={`topbar-avatar cool-tip tip-below tip-edge-right ${avatarOpen ? 'open' : ''}`}
+          onClick={() => setAvatarOpen(o => !o)}
+          aria-label="Меню аккаунта"
+          data-tip="Аккаунт"
+        >
+          {(user?.loginName || 'U').slice(0, 2).toUpperCase()}
+        </button>
+        <AnimatePresence>
+          {avatarOpen && (
+            <motion.div
+              className="avatar-menu"
+              initial={{ opacity: 0, y: -4, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.98 }}
+              transition={{ duration: 0.15 }}
+            >
+              <div className="avatar-menu-head">
+                <strong>{user?.loginName}</strong>
+                <span>{user?.role}</span>
+              </div>
+              <button
+                className="avatar-menu-item"
+                onClick={() => { setAvatarOpen(false); navigate('/profile'); }}
+              >
+                <UserCircle size={15} /> Мой профиль
+              </button>
+              <button className="avatar-menu-item" onClick={() => { setAvatarOpen(false); toggleTheme(); }}>
+                {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+                {theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              </button>
+              <button
+                className="avatar-menu-item danger"
+                onClick={() => { setAvatarOpen(false); logout(); navigate('/login'); }}
+              >
+                <LogOut size={15} /> Выйти
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -282,3 +355,4 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
     </header>
   );
 }
+

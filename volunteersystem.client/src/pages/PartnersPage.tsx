@@ -186,7 +186,7 @@ onChange = { e => setStatusFilter(e.target.value as PartnerStatus | '') } >
 
 {
     loading ? (
-        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }
+        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(340px, 100%), 1fr))', gap: 14 }
 }>
 { [1, 2, 3].map(i => <Skeleton key={ i } height = { 230} radius = { 16} />) }
     </div>
@@ -204,7 +204,7 @@ action = { canEdit && items.length === 0 ? (
           />
     </div>
       ) : (
-    <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 14 }}>
+    <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: 14 }}>
         <AnimatePresence>
         {
             filtered.map((p, i) => {

@@ -215,107 +215,82 @@ action = { canManage && items.length === 0 ? (
           />
     </div>
       ) : (
-    <div className= "table-wrap" >
-    <table>
-    <thead>
-    <tr>
-    <th style={ { width: 60 } }> ID </th>
-        < th > Волонтёр </th>
-        < th > Мероприятие </th>
-        < th > Дата </th>
-        < th > Роль </th>
-        < th style = {{ width: 100 }}> Часы </th>
-            < th style = {{ width: 140 }}> Статус </th>
-                < th style = {{ width: 130 }}> </th>
-                    </tr>
-                    </thead>
-                    < tbody >
-                    <AnimatePresence>
-                    {
-                        filtered.map((a, i) => (
-                            <motion.tr
-                    key= { a.assignmentId }
-                    initial = {{ opacity: 0, y: 6 }}
-animate = {{ opacity: 1, y: 0 }}
-exit = {{ opacity: 0 }}
-transition = {{ delay: i * 0.02 }}
-                  >
-    <td style={ { color: 'var(--text-3)' } }>#{ a.assignmentId } </td>
-        < td >
-        <div style={ { display: 'flex', alignItems: 'center', gap: 10 } }>
-            <Avatar name={ a.volunteerName } size = "sm" />
-                <span style={ { fontWeight: 600, fontSize: 13 } }> { a.volunteerName } </span>
-                    </div>
-                    </td>
-                    < td style = {{
-    maxWidth: 240,
-        overflow: 'hidden',
-            textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-}} title = { a.eventName } >
-{ a.eventName }
-    </td>
-    < td style = {{ fontSize: 13, color: 'var(--text-2)' }}>
+    <div className= "assign-grid" >
+    <AnimatePresence>
     {
-        new Date(a.eventDateStart).toLocaleDateString('ru-RU', {
-            day: '2-digit', month: 'short'
-        })
-    }
-        </td>
-        < td >
-        <Badge variant="muted" > { a.roleName || 'Участник' } </Badge>
-            </td>
-            < td className = "num" style = {{ fontWeight: 600 }}>
-            {
-                a.hoursActual != null
-                    ? <span style={ { color: 'var(--success)' } }> { a.hoursActual } ч </span>
-                        : <span style={ { color: 'var(--text-3)' } }>—</span>}
-</td>
-    <td>
+        filtered.map((a, i) => {
+            const when = new Date(a.eventDateStart).toLocaleDateString('ru-RU', {
+                day: '2-digit', month: 'short', year: 'numeric'
+            });
+            return (
+                <motion.div
+                    key= { a.assignmentId }
+                    initial = {{ opacity: 0, y: 8 }}
+animate = {{ opacity: 1, y: 0 }}
+exit = {{ opacity: 0, scale: 0.96 }}
+transition = {{ delay: i * 0.03 }}
+className = {`assign-card ${a.confirmed ? 'confirmed' : 'pending'}`}
+                  >
+    <div className="assign-side" >
+        <Avatar name={ a.volunteerName } size = "md" />
+            < div className = "assign-info" >
+                <div className="assign-label" > Волонтёр </div>
+                    < div className = "assign-name" title = { a.volunteerName } > { a.volunteerName } </div>
+                        < div className = "assign-sub" > { when } </div>
+                            </div>
+                            </div>
+
+                            < div className = "assign-stub" >
+                                <span className="assign-role" > { a.roleName || 'Участник' } </span>
+{
+    a.hoursActual != null
+    ? <span className="assign-hours" > { a.hoursActual } ч </span>
+                        : <span className="assign-hours empty" > — ч </span>}
 {
     a.confirmed
-    ? <Badge variant="success" icon = {< Check size = { 11} />}> Подтверждено </Badge>
-                        : <Badge variant="warning" > Ожидает </Badge>}
-</td>
-    < td style = {{ textAlign: 'right' }}>
-    { canManage && !a.confirmed && (
-            <button
-                          className="btn btn-icon btn-success"
-onClick = {() => handleConfirm(a)}
-title = "Подтвердить часы"
-    >
-    <Check size={ 14 } />
-        </button>
-                      )}
-{
-    canManage && a.confirmed && (
-        <button
-                          className="btn btn-icon btn-secondary"
-    onClick = {() => handleUnconfirm(a)
-}
-title = "Снять подтверждение"
-    >
-    <Clock size={ 14 } />
-        </button>
-                      )}
+    ? <span className="assign-status ok" > <Check size={ 11 } /> Подтверждено </span>
+                        : <span className="assign-status wait" > <Clock size={ 11 } /> Ожидает </span>}
+</div>
+
+    < div className = "assign-side event" >
+        < div className = "assign-info" >
+            <div className="assign-label" > Мероприятие </div>
+                < div className = "assign-name" title = { a.eventName } > { a.eventName } </div>
+                    < div className = "assign-sub" > #{ a.assignmentId } · {'№'}{ a.eventId } </div>
+                        </div>
+                        </div>
+
 {
     canManage && (
-        <button
-                          className="btn btn-icon btn-danger"
-    onClick = {() => handleDelete(a.assignmentId)
-}
-title = "Удалить"
-style = {{ marginLeft: 6 }}
-                        >
-    <Trash2 size={ 14 } />
+        < div className = "assign-actions" >
+{
+    !a.confirmed && (
+        <button className="btn btn-success btn-sm"
+onClick = {() => handleConfirm(a)}
+        >
+    <Check size={ 13 } /> Подтвердить часы
         </button>
-                      )}
-</td>
-    </motion.tr>
-                ))}
+              )}
+{
+    a.confirmed && (
+        <button className="btn btn-secondary btn-sm"
+    onClick = {() => handleUnconfirm(a)}
+        >
+    <Clock size={ 13 } /> Снять подтверждение
+            </button>
+              )}
+    <button className="btn btn-danger btn-sm"
+onClick = {() => handleDelete(a.assignmentId)
+}
+    >
+    <Trash2 size={ 13 } /> Удалить
+        </button>
+        </div>
+              )}
+</motion.div>
+            );
+          })}
 </AnimatePresence>
-    </tbody>
-    </table>
     </div>
       )}
 

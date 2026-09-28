@@ -25,11 +25,23 @@ public class NotificationsController : ControllerBase
     public async Task<ActionResult<IEnumerable<NotificationDto>>> Get()
     {
         var list = new List<NotificationDto>();
+        var isVolunteer = User.IsInRole("Волонтёр");
+        var ownIdStr = User.FindFirst("VolunteerId")?.Value;
 
-        // Свежие назначения
-        var assignments = await _db.Assignments
+        // Волонтёр видит только свои назначения
+        if (isVolunteer && ownIdStr is null)
+            return Ok(list);
+
+        var assignmentsQuery = _db.Assignments
             .Include(a => a.volunteer)
             .Include(a => a._event)
+            .AsQueryable();
+
+        if (isVolunteer)
+            assignmentsQuery = assignmentsQuery.Where(a => a.volunteer_id == int.Parse(ownIdStr!));
+
+        // Свежие назначения
+        var assignments = await assignmentsQuery
             .OrderByDescending(a => a.assigned_at)
             .Take(5)
             .ToListAsync();
@@ -40,7 +52,9 @@ public class NotificationsController : ControllerBase
             {
                 Id = $"a-{a.assignment_id}",
                 Kind = a.confirmed ? "confirm" : "assignment",
-                Text = $"{a.volunteer?.full_name ?? "Волонтёр"} назначен на «{a._event?.event_name ?? "мероприятие"}»",
+                Text = isVolunteer
+                    ? $"Вы назначены на «{a._event?.event_name ?? "мероприятие"}»"
+                    : $"{a.volunteer?.full_name ?? "Волонтёр"} назначен на «{a._event?.event_name ?? "мероприятие"}»",
                 At = a.assigned_at
             });
         }
@@ -63,21 +77,24 @@ public class NotificationsController : ControllerBase
             });
         }
 
-        // Новые партнёры
-        var partners = await _db.Partners
-            .OrderByDescending(p => p.partner_id)
-            .Take(2)
-            .ToListAsync();
-
-        foreach (var p in partners)
+        // Новые партнёры — только для администратора и менеджера
+        if (!isVolunteer)
         {
-            list.Add(new NotificationDto
+            var partners = await _db.Partners
+                .OrderByDescending(p => p.partner_id)
+                .Take(2)
+                .ToListAsync();
+
+            foreach (var p in partners)
             {
-                Id = $"p-{p.partner_id}",
-                Kind = "partner",
-                Text = $"Новый партнёр «{p.partner_name}»",
-                At = DateTime.Now.AddHours(-2)
-            });
+                list.Add(new NotificationDto
+                {
+                    Id = $"p-{p.partner_id}",
+                    Kind = "partner",
+                    Text = $"Новый партнёр «{p.partner_name}»",
+                    At = DateTime.Now.AddHours(-2)
+                });
+            }
         }
 
         return Ok(list.OrderByDescending(n => n.At).Take(10));

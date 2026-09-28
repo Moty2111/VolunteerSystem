@@ -9,14 +9,18 @@ import Modal from '../components/Modal';
 import { Avatar, Badge, EmptyState, Skeleton } from '../components/ui';
 import { IllSprout } from '../components/illustrations';
 import VolunteerProfileModal from './VolunteerProfileModal';
+import { reportsApi } from '../api/reports';
 import { getLevel } from '../utils/level';
 import { plural } from '../utils/format';
 import {
     Plus, Search, Trash2, Users, Eye, MapPin, Phone, Mail,
-    Award, Shield, ShieldCheck, Activity
+    Award, Shield, ShieldCheck, Activity, ChevronLeft, ChevronRight,
+    LayoutGrid, List, ArrowDownUp, CalendarClock
 } from 'lucide-react';
 
 const PAGE_SIZE = 12;
+
+type SortKey = 'name' | 'hours' | 'city' | 'created';
 
 export default function VolunteersPage() {
     const { user } = useAuth();
@@ -24,6 +28,7 @@ export default function VolunteersPage() {
 
     const [items, setItems] = useState<Volunteer[]>([]);
     const [skillsMap, setSkillsMap] = useState<Record<number, VolunteerSkill[]>>({});
+    const [hoursMap, setHoursMap] = useState<Record<number, number>>({});
     const [loading, setLoading] = useState(true);
     const [cityFilter, setCityFilter] = useState('');
     const [activeFilter, setActiveFilter] = useState('');
@@ -31,6 +36,8 @@ export default function VolunteersPage() {
     const [showForm, setShowForm] = useState(false);
     const [profileVolunteer, setProfileVolunteer] = useState<Volunteer | null>(null);
     const [page, setPage] = useState(1);
+    const [view, setView] = useState<'cards' | 'table'>('cards');
+    const [sort, setSort] = useState<SortKey>('name');
 
     const [form, setForm] = useState({
         fullName: '', birthDate: '', phone: '', email: '',
@@ -45,8 +52,15 @@ export default function VolunteersPage() {
             const params: Record<string, unknown> = {};
             if (cityFilter) params.city = cityFilter;
             if (activeFilter) params.active = activeFilter === 'true';
-            const list = await volunteersApi.getAll(params);
+            const [list, summary] = await Promise.all([
+                volunteersApi.getAll(params),
+                (reportsApi.volunteerSummary() as Promise<{ volunteer_id: number; total_hours: number }[]>)
+                    .catch(() => [])
+            ]);
             setItems(list);
+            setHoursMap(Object.fromEntries(
+                summary.map(s => [s.volunteer_id, Number(s.total_hours || 0)])
+            ));
 
             // Загружаем навыки для первых 30 волонтёров (оптимизация)
             const map: Record<number, VolunteerSkill[]> = {};
@@ -75,9 +89,28 @@ export default function VolunteersPage() {
         );
     }, [items, search]);
 
+    const sorted = useMemo(() => {
+        const arr = [...filtered];
+        const hoursOf = (id: number) => hoursMap[id] ?? 0;
+        switch (sort) {
+            case 'hours':
+                arr.sort((a, b) => hoursOf(b.volunteerId) - hoursOf(a.volunteerId));
+                break;
+            case 'city':
+                arr.sort((a, b) => a.city.localeCompare(b.city, 'ru'));
+                break;
+            case 'created':
+                arr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                break;
+            default:
+                arr.sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'));
+        }
+        return arr;
+    }, [filtered, sort, hoursMap]);
+
     const paged = useMemo(
-        () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-        [filtered, page]
+        () => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+        [sorted, page]
     );
 
     useEffect(() => { setPage(1); }, [search, cityFilter, activeFilter]);
@@ -111,6 +144,23 @@ export default function VolunteersPage() {
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
+    const pager = totalPages > 1 ? (
+        <div style={ { display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', marginTop: 16 } }>
+            <button className="btn btn-secondary btn-sm" disabled = { page === 1
+}
+onClick = {() => setPage(p => p - 1)} aria-label = "Предыдущая страница">
+    <ChevronLeft size={ 16 } />
+        </button>
+    < span style = {{ fontSize: 13, color: 'var(--text-2)', minWidth: 80, textAlign: 'center' }}>
+        { page } / { totalPages }
+        </span>
+        < button className = "btn btn-secondary btn-sm" disabled = { page === totalPages}
+    onClick = {() => setPage(p => p + 1)} aria-label = "Следующая страница">
+            <ChevronRight size={ 16 } />
+        </button>
+    </div>
+    ) : null;
+
     return (
         <div>
         <div className= "page-header" >
@@ -135,20 +185,43 @@ export default function VolunteersPage() {
 value = { search } onChange = { e => setSearch(e.target.value) } style = {{ minWidth: 280 }} />
     < input className = "input" placeholder = "Город"
 value = { cityFilter } onChange = { e => setCityFilter(e.target.value) } />
-    <select className="select" value = { activeFilter } onChange = { e => setActiveFilter(e.target.value) } >
+    < select className = "select" value = { activeFilter } onChange = { e => setActiveFilter(e.target.value) } >
         <option value="" > Все статусы </option>
             < option value = "true" > Активные </option>
                 < option value = "false" > Неактивные </option>
                     </select>
-                    < button className = "btn btn-secondary" onClick = { load } >
-                        <Search size={ 16 } /> Применить
-                            </button>
-                            </div>
+                    < div className = "sort-group" >
+                        <ArrowDownUp size={ 14 } />
+                            < select className = "select" value = { sort } onChange = { e => setSort(e.target.value as SortKey) } aria-label = "Сортировка" >
+                                <option value="name" > По имени </option>
+                                    < option value = "hours" > По часам </option>
+                                        < option value = "city" > По городу </option>
+                                            < option value = "created" > По дате регистрации </option>
+                                                </select>
+                                            </div >
+                                            < button className = "btn btn-secondary" onClick = { load } >
+                                                <Search size={ 16 } /> Применить
+                                                    </button>
+                                                    < div className = "view-toggle" role = "group" aria-label = "Вид списка" >
+                                                        <button
+                                                            className={`view-btn ${view === 'cards' ? 'active' : ''}`}
+                                                            onClick={() => setView('cards')}
+                                                    aria-label = "Карточки"
+                                                        >
+                                                    <LayoutGrid size={ 16 } />
+                                                        </button >
+                                                        < button className = {`view-btn ${view === 'table' ? 'active' : ''}`}
+                                                            onClick={() => setView('table')}
+                                                    aria-label = "Таблица"
+                                                        >
+                                                    <List size={ 16 } />
+                                                        </button >
+                                                    </div >
+                                                    </div >
 
 {
     loading ? (
-        <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }
-}>
+        <div className="vcard-grid" style={ { marginBottom: 0 } }>
 { [1, 2, 3, 4, 5, 6].map(i => <Skeleton key={ i } height = { 230} radius = { 16} />) }
     </div>
       ) : filtered.length === 0 ? (
@@ -164,17 +237,95 @@ action = { canCreate && items.length === 0 ? (
             ) : undefined}
           />
     </div>
+      ) : view === 'table' ? (
+    <>
+    <div className="table-wrap" >
+        <table className="sticky-first" >
+            <thead>
+                <tr>
+                    <th> Волонтёр </th>
+                    < th > Город </th>
+                    < th > Контакты </th>
+                    < th > Уровень </th>
+                    < th > Часы </th>
+                    < th > Медкнижка </th>
+                    < th > Статус </th>
+                    < th aria-label = "Действия" > </th>
+                </tr>
+            </thead>
+            <tbody>
+                { paged.map(v => {
+                    const hours = hoursMap[v.volunteerId] ?? 0;
+                    const level = getLevel(hours);
+                    return (
+                        <tr key= { v.volunteerId } className = "row-clickable" onClick = {() => setProfileVolunteer(v)} >
+                            <td>
+                                <div className="cell-person" >
+                                    <Avatar name={ v.fullName } size = "sm" />
+                                    <div>
+                                        <div className="cell-name" > { v.fullName } </div>
+                                        < div className = "cell-sub" > ID #{ v.volunteerId } </div>
+                                    </div>
+                                </div>
+                            </td>
+                            < td > { v.city } </td>
+                            < td >
+                                <div className="cell-sub" > { v.phone } </div>
+                                < div className = "cell-sub" > { v.email } </div>
+                            </td>
+                            < td >
+                                <span className={ `level-pill level-${level.key}` }>
+                                    <span className="level-dot" />
+                                    { level.label }
+                                </span>
+                            </td>
+                            < td className = "num" > <strong> { hours } ч </strong> </td>
+                            < td >
+                                { v.medBookValidUntil
+                                    ? <Badge variant= "success" > до { v.medBookValidUntil } </Badge>
+                                        : <Badge variant= "muted" > нет </Badge>}
+                            </td>
+                            < td >
+                                { v.isActive
+                                    ? <Badge variant= "info" > активен </Badge>
+                                        : <Badge variant= "muted" > неактивен </Badge>}
+                            </td>
+                            < td >
+                                <div className="row-actions" >
+                                    <button className="btn btn-icon btn-secondary"
+                                        onClick={(e) => { e.stopPropagation(); setProfileVolunteer(v); }}
+                                        title="Профиль" >
+                                        <Eye size={ 14 } />
+                                    </button>
+                                    { user?.role === 'Администратор' && (
+                                        <button className="btn btn-icon btn-danger"
+                                            onClick={(e) => handleDelete(e, v.volunteerId)}
+                                            title="Удалить" >
+                                            <Trash2 size={ 14 } />
+                                        </button>
+                                    )}
+                                </div>
+                            </td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    </div>
+    { pager }
+    </>
       ) : (
     <>
     <motion.div
             initial= {{ opacity: 0 }} animate = {{ opacity: 1 }}
-style = {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14, marginBottom: 20 }}
+className = "vcard-grid"
           >
     <AnimatePresence>
     {
         paged.map((v, i) => {
             const skills = skillsMap[v.volunteerId] || [];
-            const level = getLevel(0);
+            const hours = hoursMap[v.volunteerId] ?? 0;
+            const level = getLevel(hours);
             const hasMedBook = !!v.medBookValidUntil;
             return (
                 <motion.div
@@ -185,84 +336,55 @@ style = {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px
 exit = {{ opacity: 0, scale: 0.95 }}
 transition = {{ delay: i * 0.03 }}
 onClick = {() => setProfileVolunteer(v)}
-style = {{
-    background: 'var(--surface)',
-        border: '1px solid var(--border)',
-            borderRadius: 'var(--r-lg)',
-                padding: 18,
-                    cursor: 'pointer',
-                        transition: 'all .15s',
-                            position: 'relative',
-                                overflow: 'hidden'
-}}
-onMouseEnter = { e => {
-    e.currentTarget.style.borderColor = 'var(--primary)';
-    e.currentTarget.style.transform = 'translateY(-3px)';
-    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-}}
-onMouseLeave = { e => {
-    e.currentTarget.style.borderColor = 'var(--border)';
-    e.currentTarget.style.transform = 'none';
-    e.currentTarget.style.boxShadow = 'none';
-}}
+className = "vcard"
                   >
 {/* Медкнижка индикатор */ }
-    < div style = {{
-    position: 'absolute', top: 14, right: 14,
-        width: 26, height: 26, borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: hasMedBook ? 'var(--success-soft)' : 'var(--danger-soft)',
-                    color: hasMedBook ? 'var(--success)' : 'var(--danger)'
-}} title = { hasMedBook? `Медкнижка до ${v.medBookValidUntil}` : 'Нет медкнижки'}>
-    { hasMedBook?<ShieldCheck size = { 14 } /> : <Shield size={ 14 } />}
+    < div className = {`vcard-corner cool-tip ${hasMedBook ? '' : 'is-danger'}`}
+    data-tip = {
+        hasMedBook
+            ? `Медкнижка действует до ${v.medBookValidUntil} — допускает участие в мероприятиях с повышенными требованиями.`
+            : 'У волонтёра нет медкнижки — участие в мероприятиях с повышенными требованиями ограничено.'
+    }
+>
+{ hasMedBook?<ShieldCheck size = { 14 } /> : <Shield size={ 14 } />}
 </div>
 
-    < div style = {{ display: 'flex', gap: 14, marginBottom: 14 }}>
+    < div className = "vcard-head">
         <Avatar name={ v.fullName } size = "lg" />
-            <div style={ { flex: 1, minWidth: 0, paddingRight: 30 } }>
-                <div style={
-                    {
-                        fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 15,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                    }
-} title = { v.fullName } >
+            <div className= "vcard-main" >
+                <div className="vcard-name" title = { v.fullName } >
 { v.fullName }
     </div>
-    < div style = {{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 12, color: 'var(--text-3)' }}>
-        <MapPin size={ 12 } /> {v.city}
+    < div className = "vcard-sub" >
+        <MapPin size={ 12 } /> <span>{v.city}</span>
             </div>
-            < div style = {{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <span className={ `level-pill level-${level.key}` }>
+            < div className = "vcard-pills" >
+                <span className={ `level-pill level-${level.key}` } title = { `Отработано ${hours} ч` }>
                     <span className="level-dot" />
                     { level.label }
+                        < span className = "level-hours num" > { hours > 0 ? `${hours} ч` : '0 ч'} </span>
                         </span>
 { !v.isActive && <Badge variant="muted" > неактивен </Badge> }
 </div>
     </div>
     </div>
 
-    < div style = {{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13, marginBottom: 12 }}>
-        <div style={ { display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-2)' } }>
-            <Phone size={ 13 } /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.phone}</span >
+    < div className = "vcard-rows" >
+        <div className="vcard-row" >
+            <Phone size={ 13 } /> <span>{v.phone}</span >
                 </div>
-                < div style = {{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-2)' }}>
-                    <Mail size={ 13 } /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.email}</span >
+                < div className = "vcard-row" >
+                    <Mail size={ 13 } /> <span>{v.email}</span >
                         </div>
                         </div>
 
 {/* Навыки */ }
 {
     skills.length > 0 && (
-        <div style={
-            {
-                display: 'flex', gap: 6, flexWrap: 'wrap',
-                    paddingTop: 12, marginBottom: 4,
-                        borderTop: '1px solid var(--border)'
-            }
-    }>
+        <div className= "vcard-skills" >
     {
         skills.slice(0, 3).map(s => (
-            <span key= { s.skillId } className = "skill-chip" style = {{ fontSize: 11, padding: '2px 8px' }} >
+            <span key= { s.skillId } className = "skill-chip" >
         <Award size={ 10 } />
     { s.skillName }
     </span>
@@ -270,25 +392,19 @@ onMouseLeave = { e => {
 }
 {
     skills.length > 3 && (
-        <span className="skill-chip" style = {{ fontSize: 11, padding: '2px 8px', color: 'var(--text-3)' }
-}>
+        <span className="skill-chip is-more" >
     +{ skills.length - 3 }
     </span>
                         )}
 </div>
                     )}
 
-<div style={
-    {
-        display: 'flex', gap: 6, marginTop: 12, paddingTop: 12,
-            borderTop: '1px solid var(--border)', alignItems: 'center'
-    }
-}>
-    <div style={ { display: 'flex', gap: 4, fontSize: 11, color: 'var(--text-3)' } }>
+<div className= "vcard-foot" >
+    <div className="vcard-id" >
         <Activity size={ 12 } />
             < span > ID #{ v.volunteerId } </span>
                 </div>
-                < div style = {{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                < div className = "vcard-actions" >
                     <button className="btn btn-icon btn-secondary"
 onClick = {(e) => { e.stopPropagation(); setProfileVolunteer(v); }}
 title = "Профиль" >
@@ -311,19 +427,7 @@ title = "Удалить" >
 </AnimatePresence>
     </motion.div>
 
-{
-    totalPages > 1 && (
-        <div style={ { display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center' } }>
-            <button className="btn btn-secondary btn-sm" disabled = { page === 1
-}
-onClick = {() => setPage(p => p - 1)}>←</button>
-    < span style = {{ fontSize: 13, color: 'var(--text-2)', minWidth: 80, textAlign: 'center' }}>
-        { page } / { totalPages }
-        </span>
-        < button className = "btn btn-secondary btn-sm" disabled = { page === totalPages}
-onClick = {() => setPage(p => p + 1)}>→</button>
-    </div>
-          )}
+    { pager }
 </>
       )}
 

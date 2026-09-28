@@ -13,6 +13,13 @@ import PartnersPage from './pages/PartnersPage';
 import ReportsPage from './pages/ReportsPage';
 import SkillsPage from './pages/SkillsPage';
 import ProfilePage from './pages/ProfilePage';
+import NotificationsPage from './pages/NotificationsPage';
+import NotFoundPage from './pages/NotFoundPage';
+import CalendarPage from './pages/CalendarPage';
+import AuditPage from './pages/AuditPage';
+import UsersPage from './pages/UsersPage';
+import MySkillsPage from './pages/MySkillsPage';
+import MyProgressPage from './pages/MyProgressPage';
 
 export default function App() {
     return (
@@ -25,7 +32,10 @@ export default function App() {
                 < Route element = {< ProtectedRoute > <Layout /></ProtectedRoute >}>
                     <Route path="/dashboard" element = {< DashboardPage />} />
                         < Route path = "/events" element = {< EventsPage />} />
-                            < Route path = "/profile" element = {< ProfilePage />} />
+                                < Route path = "/profile" element = {< ProfilePage />} />
+                                    < Route path = "/notifications" element = {< NotificationsPage />} />
+                                < Route path = "/calendar" element = {< CalendarPage />} />
+
 
                                 < Route path = "/volunteers" element = {
               < ProtectedRoute allowedRoles = { ['Администратор', 'Менеджер']} >
@@ -62,10 +72,36 @@ export default function App() {
     <MyAssignmentsPage />
     </ProtectedRoute>
             } />
+
+    < Route path = "/my-skills" element = {
+              < ProtectedRoute allowedRoles = { ['Волонтёр']} >
+    <MySkillsPage />
+    </ProtectedRoute>
+            } />
+
+    < Route path = "/my-progress" element = {
+              < ProtectedRoute allowedRoles = { ['Волонтёр']} >
+    <MyProgressPage />
+    </ProtectedRoute>
+            } />
+
+    < Route path = "/audit" element = {
+              < ProtectedRoute allowedRoles = { ['Администратор']} >
+    <AuditPage />
+    </ProtectedRoute>
+            } />
+
+    < Route path = "/users" element = {
+              < ProtectedRoute allowedRoles = { ['Администратор']} >
+    <UsersPage />
+    </ProtectedRoute>
+            } />
+
+                    {/* 404 — внутри оболочки, чтобы сохранить меню и топбар */}
+                    <Route path="*" element={ < NotFoundPage />} />
     </Route>
 
     < Route path = "/" element = {< Navigate to = "/dashboard" replace />} />
-        < Route path = "*" element = {< Navigate to = "/dashboard" replace />} />
             </Routes>
             </BrowserRouter>
             </AuthProvider>

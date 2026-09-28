@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line
+    ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line,
+    LabelList
 } from 'recharts';
 import { reportsApi } from '../api/reports';
 import { useToast } from '../components/Toast';
@@ -23,6 +24,34 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 const CHART_COLORS = ['#14a37f', '#4f7cff', '#ff7a59', '#a78bfa', '#f59e0b', '#06b6d4'];
+
+/* Русские названия колонок из БД/вьюх */
+const COLUMN_LABELS: Record<string, string> = {
+    volunteer_id: 'ID волонтёра',
+    full_name: 'ФИО',
+    city: 'Город',
+    events_count: 'Мероприятий',
+    total_hours: 'Часы',
+    rating: 'Место',
+    partner_name: 'Партнёр',
+    contact_person: 'Контактное лицо',
+    phone: 'Телефон',
+    email: 'Email',
+    inn: 'ИНН',
+    allocated_amount: 'Получено, ₽',
+    total_support: 'Сумма поддержки, ₽',
+    log_id: 'ID записи',
+    user_id: 'Пользователь',
+    action: 'Действие',
+    table_name: 'Таблица',
+    record_id: 'ID записи',
+    action_date: 'Дата и время'
+};
+
+const localizeRow = (row: Record<string, unknown>): Record<string, unknown> =>
+    Object.fromEntries(
+        Object.entries(row).map(([k, v]) => [COLUMN_LABELS[k] || k, v])
+    );
 
 export default function ReportsPage() {
     const toast = useToast();
@@ -82,7 +111,7 @@ export default function ReportsPage() {
     }, [filtered]);
 
     // Специфичные данные для графиков — разные для каждой вкладки
-    const chartData = useMemo(() => {
+    const chartData = useMemo<Array<{ name: string; hours?: number; amount?: number; events?: number }>>(() => {
         if (tab === 'summary') {
             // Сводка: столбцы по часам топ-8
             return filtered
@@ -112,18 +141,28 @@ export default function ReportsPage() {
         return [];
     }, [filtered, tab]);
 
-    const handleExport = (format: 'csv' | 'excel' | 'word' | 'pdf') => {
-        if (filtered.length === 0) { toast.info('Нет данных для экспорта'); return; }
+    const displayRows = useMemo(() => filtered.map(localizeRow), [filtered]);
+
+    const handleExport = async (format: 'csv' | 'excel' | 'word' | 'pdf') => {
+        if (displayRows.length === 0) { toast.info('Нет данных для экспорта'); return; }
         const filename = `volunteer-${tab}-${new Date().toISOString().slice(0, 10)}`;
         const title = TABS.find(t => t.key === tab)?.label || 'Отчёт';
-        if (format === 'csv') exportCSV(filename, filtered);
-        else if (format === 'excel') exportExcel(filename, filtered);
-        else if (format === 'word') exportWord(filename, filtered, title);
-        else exportPDF(filtered, title);
+        if (format === 'csv') exportCSV(filename, displayRows);
+        else if (format === 'excel') exportExcel(filename, displayRows);
+        else if (format === 'word') exportWord(filename, displayRows, title);
+        else {
+            try {
+                await exportPDF(filename, displayRows, title);
+            } catch (e) {
+                console.error('Экспорт PDF:', e);
+                toast.error('Не удалось сформировать PDF — попробуйте ещё раз');
+                return;
+            }
+        }
         toast.success(`Экспорт ${format.toUpperCase()} готов`);
     };
 
-    const headers = filtered.length > 0 ? Object.keys(filtered[0]) : [];
+    const headers = displayRows.length > 0 ? Object.keys(displayRows[0]) : [];
 
     return (
         <div>
@@ -246,7 +285,13 @@ onChange = { e => setSearch(e.target.value) } />
     </div>
     < ResponsiveContainer width = "100%" height = { 280} >
     { tab === 'partners' ? (
-        <BarChart data= { chartData } margin = {{ top: 10, right: 10, bottom: 0, left: -10 }}>
+        <BarChart data= { chartData } margin = {{ top: 20, right: 10, bottom: 0, left: -10 }}>
+            <defs>
+                <linearGradient id="barGradPartner" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#ff4d8d" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="#ffa14a" stopOpacity={0.75} />
+                </linearGradient>
+            </defs>
             <CartesianGrid strokeDasharray="3 3" stroke = "var(--border)" vertical = { false} />
                 <XAxis dataKey="name" tick = {{ fill: 'var(--text-3)', fontSize: 11 }}
 axisLine = { false} tickLine = { false} interval = { 0}
@@ -258,12 +303,19 @@ angle = {- 15} textAnchor = "end" height = { 60} />
                     borderRadius: 10, fontSize: 12, color: 'var(--text)'
             }
 }
-formatter = {(v: number) => [`${v.toLocaleString('ru-RU')} ₽`, 'Сумма']}
+formatter = {(v) => [`${Number(v ?? 0).toLocaleString('ru-RU')} ₽`, 'Сумма']}
                 />
-    < Bar dataKey = "amount" fill = "#14a37f" radius = { [6, 6, 0, 0]} />
+    < Bar dataKey = "amount" fill = "url(#barGradPartner)" radius = { [6, 6, 0, 0]} >
+        <LabelList
+            dataKey="amount"
+            position="top"
+            formatter={(v) => `${Number(v ?? 0).toLocaleString('ru-RU')} ₽`}
+            style={{ fontSize: 10.5, fontWeight: 700, fill: 'var(--text-2)' }}
+        />
+    </Bar>
         </BarChart>
             ) : tab === 'rating' ? (
-    <LineChart data= { chartData } margin = {{ top: 10, right: 10, bottom: 0, left: -10 }}>
+    <LineChart data= { chartData } margin = {{ top: 20, right: 10, bottom: 0, left: -10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke = "var(--border)" vertical = { false} />
             <XAxis dataKey="name" tick = {{ fill: 'var(--text-3)', fontSize: 10 }}
 axisLine = { false} tickLine = { false} interval = { 0}
@@ -279,7 +331,13 @@ angle = {- 20} textAnchor = "end" height = { 70} />
 dot = {{ r: 5, fill: '#ff7a59' }} activeDot = {{ r: 7 }} />
     </LineChart>
             ) : (
-    <BarChart data= { chartData } margin = {{ top: 10, right: 10, bottom: 0, left: -10 }}>
+    <BarChart data= { chartData } margin = {{ top: 20, right: 10, bottom: 0, left: -10 }}>
+        <defs>
+            <linearGradient id="barGradHours" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ff4d8d" stopOpacity={0.95} />
+                <stop offset="100%" stopColor="#ffa14a" stopOpacity={0.75} />
+            </linearGradient>
+        </defs>
         <CartesianGrid strokeDasharray="3 3" stroke = "var(--border)" vertical = { false} />
             <XAxis dataKey="name" tick = {{ fill: 'var(--text-3)', fontSize: 11 }}
 axisLine = { false} tickLine = { false} interval = { 0}
@@ -291,8 +349,15 @@ angle = {- 15} textAnchor = "end" height = { 60} />
                     borderRadius: 10, fontSize: 12, color: 'var(--text)'
             }
 }
-formatter = {(v: number) => [`${v.toFixed(1)} ч`, 'Часы']} />
-    < Bar dataKey = "hours" fill = "#14a37f" radius = { [6, 6, 0, 0]} />
+formatter = {(v) => [`${Number(v ?? 0).toFixed(1)} ч`, 'Часы']} />
+    < Bar dataKey = "hours" fill = "url(#barGradHours)" radius = { [6, 6, 0, 0]} >
+        <LabelList
+            dataKey="hours"
+            position="top"
+            formatter={(v) => `${Number(v ?? 0).toFixed(1)} ч`}
+            style={{ fontSize: 10.5, fontWeight: 700, fill: 'var(--text-2)' }}
+        />
+    </Bar>
         </BarChart>
             )}
 </ResponsiveContainer>
@@ -315,7 +380,7 @@ text = "Измените фильтры или период"
     </div>
       ) : (
     <div className= "table-wrap" >
-    <table>
+    <table className="sticky-first" >
     <thead>
     <tr>
     <th style={ { width: 50 } }># </th>
@@ -330,7 +395,7 @@ text = "Измените фильтры или период"
     </thead>
     <tbody>
 {
-    filtered.map((row, i) => (
+    displayRows.map((row, i) => (
         <motion.tr key= { i } initial = {{ opacity: 0 }} animate = {{ opacity: 1 }}
 transition = {{ delay: Math.min(i * 0.015, 0.3) }}>
     <td style={ { color: 'var(--text-3)', fontSize: 12 } }> { i + 1}</td>

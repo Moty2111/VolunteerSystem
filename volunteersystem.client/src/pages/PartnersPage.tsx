@@ -5,11 +5,12 @@ import type { Partner } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
-import { Badge, EmptyState, Skeleton } from '../components/ui';
+import { Badge, EmptyState, Skeleton, ViewToggle, useViewMode } from '../components/ui';
+import { formatMoney } from '../utils/format';
 import { IllHands } from '../components/illustrations';
 import {
     Plus, Search, Trash2, Building2, Phone, Mail, FileText,
-    TrendingUp, Award, Clock, CheckCircle2, AlertCircle
+    TrendingUp, Award, Clock, CheckCircle2, AlertCircle, ArrowDownUp
 } from 'lucide-react';
 
 function avatarGradient(seed: string): string {
@@ -29,6 +30,7 @@ const initials = (name: string) =>
     name.replace(/[«»"]/g, '').split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('');
 
 type PartnerStatus = 'active' | 'pending' | 'expired';
+type SortKey = 'name' | 'amount' | 'status';
 
 function getStatus(p: Partner): PartnerStatus {
     if (!p.contractDate) return 'pending';
@@ -51,6 +53,8 @@ export default function PartnersPage() {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState<PartnerStatus | ''>('');
     const [showForm, setShowForm] = useState(false);
+    const [view, setView] = useViewMode('partners');
+    const [sort, setSort] = useState<SortKey>('name');
 
     const canEdit = user?.role === 'Администратор';
 
@@ -82,8 +86,23 @@ export default function PartnersPage() {
             );
         }
         if (statusFilter) list = list.filter(p => getStatus(p) === statusFilter);
-        return list;
-    }, [items, search, statusFilter]);
+
+        if (view === 'cards') return list;
+
+        return [...list].sort((a, b) => {
+            switch (sort) {
+                case 'amount':
+                    return (b.supportAmount ?? 0) - (a.supportAmount ?? 0) ||
+                        a.partnerName.localeCompare(b.partnerName, 'ru');
+                case 'status':
+                    return getStatus(a).localeCompare(getStatus(b)) ||
+                        a.partnerName.localeCompare(b.partnerName, 'ru');
+                case 'name':
+                default:
+                    return a.partnerName.localeCompare(b.partnerName, 'ru');
+            }
+        });
+    }, [items, search, statusFilter, view, sort]);
 
     const total = useMemo(() => items.reduce((s, p) => s + (p.supportAmount ?? 0), 0), [items]);
 
@@ -182,7 +201,21 @@ onChange = { e => setStatusFilter(e.target.value as PartnerStatus | '') } >
             < option value = "pending" > Ожидают </option>
                 < option value = "expired" > Просрочены </option>
                     </select>
+                    <div className="sort-group" >
+                        <ArrowDownUp size = { 14 } />
+                        <select
+                            className = "select"
+                            value = { sort }
+                            onChange = { e => setSort(e.target.value as SortKey) }
+                            aria-label = "Сортировка"
+                        >
+                            <option value = "name" > По названию </option>
+                            <option value = "amount" > По сумме поддержки </option>
+                            <option value = "status" > По статусу </option>
+                        </select>
                     </div>
+                    <ViewToggle view = { view } onChange = { setView } label = "Вид списка партнёров" />
+                </div>
 
 {
     loading ? (
@@ -202,6 +235,60 @@ action = { canEdit && items.length === 0 ? (
             </button>
             ) : undefined}
           />
+    </div>
+      ) : view === 'table' ? (
+    <div className="table-wrap">
+        <table className="sticky-first">
+            <thead>
+                <tr>
+                    <th>Организация</th>
+                    <th>Контакт</th>
+                    <th>Договор</th>
+                    <th className="num">Поддержка</th>
+                    <th>Статус</th>
+                    {canEdit && <th aria-label="Действия" />}
+                </tr>
+            </thead>
+            <tbody>
+                { filtered.map(p => {
+                    const st = STATUS_LABELS[getStatus(p)];
+                    return (
+                        <tr key= { p.partnerId } >
+                            <td>
+                                <div className="cell-name">{ p.partnerName }</div>
+                                <div className="cell-sub num">{ p.inn ? `ИНН ${p.inn}` : `ID #${p.partnerId}` }</div>
+                            </td>
+                            <td>
+                                <div className="cell-name">{ p.contactPerson || '—' }</div>
+                                <div className="cell-sub">{ p.phone || p.email || '' }</div>
+                            </td>
+                            <td>
+                                <div className="cell-name">{ p.contractNumber || '—' }</div>
+                                <div className="cell-sub">
+                                    { p.contractDate ? new Date(p.contractDate).toLocaleDateString('ru-RU') : '' }
+                                </div>
+                            </td>
+                            <td className="num">{ formatMoney(p.supportAmount) }</td>
+                            <td><Badge variant={ st.variant }> { st.label } </Badge></td>
+                            {
+                                canEdit && (
+                                    <td className="row-actions">
+                                        <button
+                                            className="btn btn-icon btn-danger"
+                                            onClick = {() => handleDelete(p.partnerId) }
+                                            title = "Удалить"
+                                            aria-label = "Удалить"
+                                        >
+                                            <Trash2 size={ 14 } />
+                                        </button>
+                                    </td>
+                                )
+                            }
+                        </tr>
+                    );
+                }) }
+            </tbody>
+        </table>
     </div>
       ) : (
     <div style= {{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))', gap: 14 }}>

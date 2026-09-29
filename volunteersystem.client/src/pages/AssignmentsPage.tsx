@@ -7,7 +7,7 @@ import type { Assignment, Volunteer, EventItem } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
-import { Avatar, Badge, EmptyState, Skeleton } from '../components/ui';
+import { Avatar, Badge, EmptyState, Skeleton, ViewToggle, useViewMode } from '../components/ui';
 import { IllHands } from '../components/illustrations';
 import {
     Plus, Trash2, CheckSquare, Check, Clock, Search, Filter
@@ -35,6 +35,7 @@ export default function AssignmentsPage() {
     const [showForm, setShowForm] = useState(false);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [search, setSearch] = useState('');
+    const [view, setView] = useViewMode('assignments');
 
     const [form, setForm] = useState({ volunteerId: 0, eventId: 0, roleId: 6 });
 
@@ -184,11 +185,12 @@ onClick = {() => setStatusFilter('confirmed')}
     </div>
     < input
 className = "input"
-placeholder = "Поиск по волонтёру, мероприятию…"
-value = { search }
-onChange = { e => setSearch(e.target.value) }
-style = {{ minWidth: 260 }}
+    placeholder = "Поиск по волонтёру, мероприятию…"
+    value = { search }
+    onChange = { e => setSearch(e.target.value) }
+    style = {{ minWidth: 260 }}
         />
+        <ViewToggle view = { view } onChange = { setView } label = "Вид списка назначений" />
     </div>
 
 {
@@ -213,6 +215,85 @@ action = { canManage && items.length === 0 ? (
             </button>
             ) : undefined}
           />
+    </div>
+      ) : view === 'table' ? (
+    <div className="table-wrap">
+        <table className="sticky-first">
+            <thead>
+                <tr>
+                    <th>Волонтёр</th>
+                    <th>Мероприятие</th>
+                    <th>Дата</th>
+                    <th>Роль</th>
+                    <th className="num">Часы</th>
+                    <th>Статус</th>
+                    {canManage && <th aria-label="Действия" />}
+                </tr>
+            </thead>
+            <tbody>
+                { filtered.map(a => (
+                    <tr key= { a.assignmentId } >
+                        <td>
+                            <div className="cell-person">
+                                <Avatar name={ a.volunteerName } size = "sm" />
+                                <div>
+                                    <div className="cell-name">{ a.volunteerName }</div>
+                                    <div className="cell-sub num">ID #{ a.assignmentId }</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>{ a.eventName }</td>
+                        <td className="nowrap">
+                            { new Date(a.eventDateStart).toLocaleDateString('ru-RU', {
+                                day: '2-digit', month: 'short', year: 'numeric'
+                            }) }
+                        </td>
+                        <td>{ a.roleName || 'Участник' }</td>
+                        <td className="num">{ a.hoursActual != null ? `${a.hoursActual} ч` : '—' }</td>
+                        <td>
+                            <Badge variant={ a.confirmed ? 'success' : 'warning' }>
+                                { a.confirmed ? 'Подтверждено' : 'Ожидает' }
+                            </Badge>
+                        </td>
+                        {
+                            canManage && (
+                                <td className="row-actions">
+                                    {
+                                        !a.confirmed ? (
+                                            <button
+                                                className="btn btn-icon btn-success"
+                                                onClick = {() => handleConfirm(a) }
+                                                title = "Подтвердить часы"
+                                                aria-label = "Подтвердить часы"
+                                            >
+                                                <Check size={ 14 } />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                className="btn btn-icon btn-secondary"
+                                                onClick = {() => handleUnconfirm(a) }
+                                                title = "Снять подтверждение"
+                                                aria-label = "Снять подтверждение"
+                                            >
+                                                <Clock size={ 14 } />
+                                            </button>
+                                        )
+                                    }
+                                    <button
+                                        className="btn btn-icon btn-danger"
+                                        onClick = {() => handleDelete(a.assignmentId) }
+                                        title = "Удалить"
+                                        aria-label = "Удалить"
+                                    >
+                                        <Trash2 size={ 14 } />
+                                    </button>
+                                </td>
+                            )
+                        }
+                    </tr>
+                )) }
+            </tbody>
+        </table>
     </div>
       ) : (
     <div className= "assign-grid" >

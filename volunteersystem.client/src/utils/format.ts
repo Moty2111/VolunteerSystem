@@ -11,6 +11,13 @@ export function formatHours(h: number | null | undefined): string {
   return v.toFixed(1) + ' ч';
 }
 
+/** Деньги: 440 000 ₽ (без копеек, с неразрывными пробелами). */
+export function formatMoney(v: number | null | undefined, withSign = true): string {
+  const n = Number(v ?? 0);
+  const body = n.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+  return withSign ? `${body} ₽` : body;
+}
+
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);

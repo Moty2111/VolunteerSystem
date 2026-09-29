@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace VolunteerSystem.Server.Dtos.Users;
 
 public class SystemUserDto
@@ -13,6 +15,14 @@ public class SystemUserDto
 
 public class UpdateUserRoleDto
 {
+    /// <summary>Роли, которые можно назначить. Проверяется на сервере, а не только в UI.</summary>
+    public static readonly string[] Roles = ["Администратор", "Менеджер", "Волонтёр"];
+
+    /// <summary>Регулярное выражение для атрибута (должно быть константой).</summary>
+    public const string AllowedPattern = @"^(Администратор|Менеджер|Волонтёр)$";
+
+    [Required(ErrorMessage = "Выберите роль")]
+    [RegularExpression(AllowedPattern, ErrorMessage = "Недопустимая роль")]
     public string Role { get; set; } = string.Empty;
 }
 

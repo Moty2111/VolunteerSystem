@@ -6,6 +6,7 @@ import { authApi } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
+import AuthLogoScatter from '../components/AuthLogoScatter';
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -80,6 +81,10 @@ export default function RegisterPage() {
             Присоединяйтесь <br />
             к добрым делам
           </h1>
+
+          {/* тот же блок прозрачных лого, что и на странице входа */}
+          <AuthLogoScatter />
+
           <p className="auth-brand-sub">
             Регистрация займёт 1 минуту. Вы сможете записываться на мероприятия,
             отслеживать свои часы и получать бейджи за активность.

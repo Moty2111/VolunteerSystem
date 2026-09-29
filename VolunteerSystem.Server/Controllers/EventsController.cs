@@ -12,15 +12,18 @@ namespace VolunteerSystem.Server.Controllers;
 [Authorize]
 public class EventsController : ControllerBase
 {
-    private static readonly string[] AllowedStatuses =
-        { "Запланировано", "Идёт", "Завершено", "Отменено" };
-
     private readonly AppDbContext _db;
+    private readonly ILogger<EventsController> _logger;
 
-    public EventsController(AppDbContext db) => _db = db;
+    public EventsController(AppDbContext db, ILogger<EventsController> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
 
     // ============================================================
     // GET: /api/events?status=Запланировано&typeId=2&from=2026-01-01&to=2026-12-31
+    // Список мероприятий открыт: его видит и волонтёр (для самостоятельной записи)
     // ============================================================
     [HttpGet]
     [AllowAnonymous]
@@ -29,16 +32,21 @@ public class EventsController : ControllerBase
         [FromQuery] int? typeId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
-        [FromQuery] string? search)
+        [FromQuery] string? search,
+        CancellationToken ct)
     {
         var query = _db.Events
+            .AsNoTracking()
             .Include(e => e.event_type)
             .Include(e => e.coordinator)
             .Include(e => e.Assignments)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(status))
-            query = query.Where(e => e.status == status);
+        {
+            var s = status.Trim();
+            query = query.Where(e => e.status == s);
+        }
 
         if (typeId.HasValue)
             query = query.Where(e => e.event_type_id == typeId.Value);
@@ -50,12 +58,15 @@ public class EventsController : ControllerBase
             query = query.Where(e => e.date_end <= to.Value);
 
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(e => e.event_name.Contains(search));
+        {
+            var pattern = search.Trim();
+            query = query.Where(e => e.event_name.Contains(pattern) || e.location.Contains(pattern));
+        }
 
         var result = await query
             .OrderByDescending(e => e.date_start)
             .Select(e => ToDto(e))
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(result);
     }
@@ -65,15 +76,16 @@ public class EventsController : ControllerBase
     // ============================================================
     [HttpGet("{id:int}")]
     [AllowAnonymous]
-    public async Task<ActionResult<EventDto>> GetById(int id)
+    public async Task<ActionResult<EventDto>> GetById(int id, CancellationToken ct)
     {
         var e = await _db.Events
+            .AsNoTracking()
             .Include(x => x.event_type)
             .Include(x => x.coordinator)
             .Include(x => x.Assignments)
-            .FirstOrDefaultAsync(x => x.event_id == id);
+            .FirstOrDefaultAsync(x => x.event_id == id, ct);
 
-        if (e is null) return NotFound();
+        if (e is null) return NotFound(new { message = "Мероприятие не найдено" });
         return Ok(ToDto(e));
     }
 
@@ -82,40 +94,39 @@ public class EventsController : ControllerBase
     // ============================================================
     [HttpPost]
     [Authorize(Roles = "Администратор,Менеджер")]
-    public async Task<ActionResult<EventDto>> Create([FromBody] CreateEventDto dto)
+    public async Task<ActionResult<EventDto>> Create([FromBody] CreateEventDto dto, CancellationToken ct)
     {
-        if (dto.DateEnd <= dto.DateStart)
-            return BadRequest(new { message = "Дата окончания должна быть позже даты начала" });
-
-        if (!AllowedStatuses.Contains(dto.Status))
-            return BadRequest(new { message = "Недопустимый статус" });
+        // корректность дат и статуса проверит модель (DataAnnotations + IValidatableObject)
 
         if (dto.DateStart < DateTime.Now && !User.IsInRole("Администратор"))
             return BadRequest(new { message = "Дата начала не может быть в прошлом" });
 
-        if (!await _db.EventTypes.AnyAsync(t => t.event_type_id == dto.EventTypeId))
+        if (!await _db.EventTypes.AnyAsync(t => t.event_type_id == dto.EventTypeId, ct))
             return BadRequest(new { message = "Указанный тип мероприятия не найден" });
 
-        var userIdClaim = User.FindFirst("UserId")?.Value;
-        if (userIdClaim is null) return Unauthorized();
+        if (!int.TryParse(User.FindFirst("UserId")?.Value, out var userId))
+            return Unauthorized();
 
         var ev = new Event
         {
-            event_name = dto.EventName,
+            event_name = dto.EventName.Trim(),
             date_start = dto.DateStart,
             date_end = dto.DateEnd,
-            location = dto.Location,
+            location = dto.Location.Trim(),
             event_type_id = dto.EventTypeId,
-            description = dto.Description,
+            description = dto.Description?.Trim(),
             status = dto.Status,
-            coordinator_id = int.Parse(userIdClaim),
+            coordinator_id = userId,
             created_at = DateTime.Now
         };
 
         _db.Events.Add(ev);
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
 
-        return await GetById(ev.event_id);
+        _logger.LogInformation("Создано мероприятие {Name} (id {Id}) координатором {UserId}",
+            ev.event_name, ev.event_id, userId);
+
+        return await GetById(ev.event_id, ct);
     }
 
     // ============================================================
@@ -123,34 +134,30 @@ public class EventsController : ControllerBase
     // ============================================================
     [HttpPut("{id:int}")]
     [Authorize(Roles = "Администратор,Менеджер")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateEventDto dto)
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateEventDto dto, CancellationToken ct)
     {
-        var ev = await _db.Events.FindAsync(id);
-        if (ev is null) return NotFound();
+        var ev = await _db.Events.FirstOrDefaultAsync(x => x.event_id == id, ct);
+        if (ev is null) return NotFound(new { message = "Мероприятие не найдено" });
 
         // Менеджер правит только свои мероприятия
         if (User.IsInRole("Менеджер"))
         {
-            var userId = int.Parse(User.FindFirst("UserId")!.Value);
-            if (ev.coordinator_id != userId)
+            if (!int.TryParse(User.FindFirst("UserId")?.Value, out var userId) || ev.coordinator_id != userId)
                 return Forbid();
         }
 
-        if (dto.DateEnd <= dto.DateStart)
-            return BadRequest(new { message = "Дата окончания должна быть позже даты начала" });
+        if (!await _db.EventTypes.AnyAsync(t => t.event_type_id == dto.EventTypeId, ct))
+            return BadRequest(new { message = "Указанный тип мероприятия не найден" });
 
-        if (!AllowedStatuses.Contains(dto.Status))
-            return BadRequest(new { message = "Недопустимый статус" });
-
-        ev.event_name = dto.EventName;
+        ev.event_name = dto.EventName.Trim();
         ev.date_start = dto.DateStart;
         ev.date_end = dto.DateEnd;
-        ev.location = dto.Location;
+        ev.location = dto.Location.Trim();
         ev.event_type_id = dto.EventTypeId;
-        ev.description = dto.Description;
+        ev.description = dto.Description?.Trim();
         ev.status = dto.Status;
 
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
         return NoContent();
     }
 
@@ -159,16 +166,18 @@ public class EventsController : ControllerBase
     // ============================================================
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Администратор")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        var ev = await _db.Events.FindAsync(id);
-        if (ev is null) return NotFound();
+        var ev = await _db.Events.FirstOrDefaultAsync(x => x.event_id == id, ct);
+        if (ev is null) return NotFound(new { message = "Мероприятие не найдено" });
 
-        if (ev.status == "Завершено")
+        if (ev.status == EventStatuses.Finished)
             return BadRequest(new { message = "Нельзя удалить завершённое мероприятие" });
 
         _db.Events.Remove(ev);
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Удалено мероприятие id {Id}", id);
         return NoContent();
     }
 

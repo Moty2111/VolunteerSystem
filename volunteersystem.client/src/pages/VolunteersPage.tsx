@@ -6,7 +6,7 @@ import type { Volunteer } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
-import { Avatar, Badge, EmptyState, Skeleton } from '../components/ui';
+import { Avatar, Badge, EmptyState, Skeleton, ViewToggle, useViewMode } from '../components/ui';
 import { IllSprout } from '../components/illustrations';
 import VolunteerProfileModal from './VolunteerProfileModal';
 import { reportsApi } from '../api/reports';
@@ -36,7 +36,7 @@ export default function VolunteersPage() {
     const [showForm, setShowForm] = useState(false);
     const [profileVolunteer, setProfileVolunteer] = useState<Volunteer | null>(null);
     const [page, setPage] = useState(1);
-    const [view, setView] = useState<'cards' | 'table'>('cards');
+    const [view, setView] = useViewMode('volunteers');
     const [sort, setSort] = useState<SortKey>('name');
 
     const [form, setForm] = useState({
@@ -202,21 +202,7 @@ value = { cityFilter } onChange = { e => setCityFilter(e.target.value) } />
                                             < button className = "btn btn-secondary" onClick = { load } >
                                                 <Search size={ 16 } /> Применить
                                                     </button>
-                                                    < div className = "view-toggle" role = "group" aria-label = "Вид списка" >
-                                                        <button
-                                                            className={`view-btn ${view === 'cards' ? 'active' : ''}`}
-                                                            onClick={() => setView('cards')}
-                                                    aria-label = "Карточки"
-                                                        >
-                                                    <LayoutGrid size={ 16 } />
-                                                        </button >
-                                                        < button className = {`view-btn ${view === 'table' ? 'active' : ''}`}
-                                                            onClick={() => setView('table')}
-                                                    aria-label = "Таблица"
-                                                        >
-                                                    <List size={ 16 } />
-                                                        </button >
-                                                    </div >
+                                                    <ViewToggle view={view} onChange={setView} label="Вид списка волонтёров" />
                                                     </div >
 
 {

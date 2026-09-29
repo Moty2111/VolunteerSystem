@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VolunteerSystem.Server.Data;
+using VolunteerSystem.Server.Dtos.Events;
 
 namespace VolunteerSystem.Server.Controllers;
 
@@ -19,32 +20,34 @@ public class NotificationDto
 public class NotificationsController : ControllerBase
 {
     private readonly AppDbContext _db;
+
     public NotificationsController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<NotificationDto>>> Get()
+    public async Task<ActionResult<IEnumerable<NotificationDto>>> Get(CancellationToken ct)
     {
         var list = new List<NotificationDto>();
         var isVolunteer = User.IsInRole("Волонтёр");
-        var ownIdStr = User.FindFirst("VolunteerId")?.Value;
+        var hasOwnId = int.TryParse(User.FindFirst("VolunteerId")?.Value, out var ownId);
 
         // Волонтёр видит только свои назначения
-        if (isVolunteer && ownIdStr is null)
+        if (isVolunteer && !hasOwnId)
             return Ok(list);
 
+        // Свежие назначения
         var assignmentsQuery = _db.Assignments
+            .AsNoTracking()
             .Include(a => a.volunteer)
             .Include(a => a._event)
             .AsQueryable();
 
         if (isVolunteer)
-            assignmentsQuery = assignmentsQuery.Where(a => a.volunteer_id == int.Parse(ownIdStr!));
+            assignmentsQuery = assignmentsQuery.Where(a => a.volunteer_id == ownId);
 
-        // Свежие назначения
         var assignments = await assignmentsQuery
             .OrderByDescending(a => a.assigned_at)
             .Take(5)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         foreach (var a in assignments)
         {
@@ -61,10 +64,11 @@ public class NotificationsController : ControllerBase
 
         // Ближайшие события
         var upcoming = await _db.Events
-            .Where(e => e.date_start >= DateTime.Now && e.status == "Запланировано")
+            .AsNoTracking()
+            .Where(e => e.date_start >= DateTime.Now && e.status == EventStatuses.Planned)
             .OrderBy(e => e.date_start)
             .Take(3)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         foreach (var e in upcoming)
         {
@@ -81,9 +85,10 @@ public class NotificationsController : ControllerBase
         if (!isVolunteer)
         {
             var partners = await _db.Partners
+                .AsNoTracking()
                 .OrderByDescending(p => p.partner_id)
                 .Take(2)
-                .ToListAsync();
+                .ToListAsync(ct);
 
             foreach (var p in partners)
             {

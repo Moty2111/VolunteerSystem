@@ -19,11 +19,11 @@ public class ReportsController : ControllerBase
     // GET: /api/reports/volunteer-summary — сводка по волонтёрам
     // ============================================================
     [HttpGet("volunteer-summary")]
-    public async Task<ActionResult<IEnumerable<VolunteerSummaryRow>>> VolunteerSummary()
+    public async Task<ActionResult<IEnumerable<VolunteerSummaryRow>>> VolunteerSummary(CancellationToken ct)
     {
         var rows = await _db.Database
             .SqlQueryRaw<VolunteerSummaryRow>("SELECT * FROM vw_VolunteerSummary")
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(rows);
     }
@@ -32,12 +32,13 @@ public class ReportsController : ControllerBase
     // GET: /api/reports/event-participants/2 — участники мероприятия
     // ============================================================
     [HttpGet("event-participants/{eventId:int}")]
-    public async Task<ActionResult<IEnumerable<EventParticipantRow>>> EventParticipants(int eventId)
+    public async Task<ActionResult<IEnumerable<EventParticipantRow>>> EventParticipants(
+        int eventId, CancellationToken ct)
     {
         var rows = await _db.Database
             .SqlQueryRaw<EventParticipantRow>(
                 "SELECT * FROM vw_EventParticipants WHERE event_id = {0}", eventId)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(rows);
     }
@@ -46,11 +47,11 @@ public class ReportsController : ControllerBase
     // GET: /api/reports/partner-report — партнёрский отчёт
     // ============================================================
     [HttpGet("partner-report")]
-    public async Task<ActionResult<IEnumerable<PartnerReportRow>>> PartnerReport()
+    public async Task<ActionResult<IEnumerable<PartnerReportRow>>> PartnerReport(CancellationToken ct)
     {
         var rows = await _db.Database
             .SqlQueryRaw<PartnerReportRow>("SELECT * FROM vw_PartnerReport")
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(rows);
     }
@@ -62,13 +63,20 @@ public class ReportsController : ControllerBase
     [HttpGet("hours")]
     public async Task<ActionResult<IEnumerable<HoursByPeriodRow>>> HoursByPeriod(
         [FromQuery] DateTime from,
-        [FromQuery] DateTime to)
+        [FromQuery] DateTime to,
+        CancellationToken ct)
     {
+        if (to < from)
+            return BadRequest(new { message = "Период «до» не может быть раньше периода «с»" });
+
+        // разумный потолок, чтобы случайный from=0001 не гонял всю таблицу
+        var fromDate = from == default ? DateTime.Today.AddYears(-1) : from.Date;
+        var toDate = to == default ? DateTime.Today : to.Date;
+
         var rows = await _db.Database
             .SqlQueryRaw<HoursByPeriodRow>(
-                "EXEC sp_HoursReport @date_from = {0}, @date_to = {1}",
-                from.Date, to.Date)
-            .ToListAsync();
+                "EXEC sp_HoursReport @date_from = {0}, @date_to = {1}", fromDate, toDate)
+            .ToListAsync(ct);
 
         return Ok(rows);
     }
@@ -78,11 +86,11 @@ public class ReportsController : ControllerBase
     // Использует хранимую процедуру sp_VolunteerRating
     // ============================================================
     [HttpGet("volunteer-rating")]
-    public async Task<ActionResult<IEnumerable<VolunteerRatingRow>>> VolunteerRating()
+    public async Task<ActionResult<IEnumerable<VolunteerRatingRow>>> VolunteerRating(CancellationToken ct)
     {
         var rows = await _db.Database
             .SqlQueryRaw<VolunteerRatingRow>("EXEC sp_VolunteerRating")
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(rows);
     }
@@ -92,11 +100,15 @@ public class ReportsController : ControllerBase
     // ============================================================
     [HttpGet("audit-log")]
     [Authorize(Roles = "Администратор")]
-    public async Task<IActionResult> AuditLog([FromQuery] int limit = 100)
+    public async Task<IActionResult> AuditLog([FromQuery] int limit = 100, CancellationToken ct = default)
     {
+        // limit защищён и сверху, и снизу: иначе ?limit=999999 утащит всё
+        var take = Math.Clamp(limit, 1, 1000);
+
         var rows = await _db.AuditLogs
+            .AsNoTracking()
             .OrderByDescending(l => l.action_date)
-            .Take(limit)
+            .Take(take)
             .Select(l => new
             {
                 l.log_id,
@@ -106,7 +118,7 @@ public class ReportsController : ControllerBase
                 l.record_id,
                 l.action_date
             })
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(rows);
     }

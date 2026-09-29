@@ -1,23 +1,45 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using VolunteerSystem.Server.Models;
 
 namespace VolunteerSystem.Server.Services;
 
+public class JwtOptions
+{
+    public const string SectionName = "Jwt";
+
+    public string Key { get; set; } = string.Empty;
+    public string Issuer { get; set; } = string.Empty;
+    public string Audience { get; set; } = string.Empty;
+    public int ExpireMinutes { get; set; } = 120;
+}
+
 public class JwtService
 {
-    private readonly IConfiguration _config;
+    private readonly JwtOptions _options;
+    private readonly SigningCredentials _credentials;
+    private readonly JwtSecurityTokenHandler _handler = new();
 
-    public JwtService(IConfiguration config) => _config = config;
+    public JwtService(IOptions<JwtOptions> options)
+    {
+        _options = options.Value;
+
+        if (string.IsNullOrWhiteSpace(_options.Key) || _options.Key.Length < 32)
+            throw new InvalidOperationException(
+                "Jwt:Key должен быть задан и содержать не менее 32 символов.");
+
+        // ключ и подпись считаем один раз, а не на каждый токен
+        _credentials = new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key)),
+            SecurityAlgorithms.HmacSha256);
+    }
 
     public (string Token, DateTime ExpiresAt) Generate(SystemUser user)
     {
-        var jwt = _config.GetSection("Jwt");
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var expires = DateTime.UtcNow.AddMinutes(int.Parse(jwt["ExpireMinutes"]!));
+        var expires = DateTime.UtcNow.AddMinutes(_options.ExpireMinutes);
 
         var claims = new List<Claim>
         {
@@ -31,12 +53,12 @@ public class JwtService
             claims.Add(new Claim("VolunteerId", user.volunteer_id.Value.ToString()));
 
         var token = new JwtSecurityToken(
-            issuer: jwt["Issuer"],
-            audience: jwt["Audience"],
+            issuer: _options.Issuer,
+            audience: _options.Audience,
             claims: claims,
             expires: expires,
-            signingCredentials: creds);
+            signingCredentials: _credentials);
 
-        return (new JwtSecurityTokenHandler().WriteToken(token), expires);
+        return (_handler.WriteToken(token), expires);
     }
 }

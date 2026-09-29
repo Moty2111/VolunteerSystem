@@ -7,7 +7,7 @@ import { useToast } from '../components/Toast';
 import { Badge, EmptyState, Skeleton, StatCard } from '../components/ui';
 import { IllAward } from '../components/illustrations';
 import { plural } from '../utils/format';
-import { skillLevelVariant, skillIcon, skillTone, isLanguageLevel } from '../utils/skillLevels';
+import { skillLevelVariant, skillNameIcon, skillTone, isLanguageLevel } from '../utils/skillLevels';
 import { Award, CheckCircle2, Languages, Wrench, ArrowRight, Sparkles } from 'lucide-react';
 
 export default function MySkillsPage() {
@@ -46,7 +46,7 @@ export default function MySkillsPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.03 }}
-            className={`vcard is-static ${skillTone(s.level)}`}
+            className={`vcard ${skillTone(s.level)}`}
         >
             <div
                 className="vcard-corner cool-tip"
@@ -59,7 +59,7 @@ export default function MySkillsPage() {
             </div>
             <div className="vcard-head">
                 <div className="vcard-avatar">
-                    {(() => { const Icon = skillIcon(s.level); return <Icon size={22} strokeWidth={2.2} />; })()}
+                    {(() => { const Icon = skillNameIcon(s.skillName, s.level); return <Icon size={22} strokeWidth={2.2} />; })()}
                 </div>
                 <div className="vcard-main">
                     <div className="vcard-name" title={s.skillName}>{s.skillName}</div>

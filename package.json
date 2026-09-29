@@ -1,0 +1,13 @@
+{
+  "name": "volunteersystem",
+  "private": true,
+  "version": "1.0.0",
+  "description": "VolunteerSystem — система управления волонтёрами (клиент + сервер)",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "npm --prefix VolunteerSystem.Server run dev",
+    "dev:web": "npm --prefix volunteersystem.client run dev:web",
+    "build": "npm --prefix volunteersystem.client run build",
+    "install:all": "npm --prefix volunteersystem.client install"
+  }
+}

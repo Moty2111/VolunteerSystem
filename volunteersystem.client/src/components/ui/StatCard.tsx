@@ -15,6 +15,8 @@ interface Props {
 
 export default function StatCard({ label, value, icon, color, trend, delay = 0, onClick }: Props) {
   const accent = color || 'var(--primary)';
+  /* длинные текстовые значения (уровни, статусы) ужимаются, чтобы не вылезать за карточку */
+  const isText = typeof value === 'string' && value.trim().length > 4 && !/^[\d\s.,%чa-zA-Z-]*$/.test(value.trim());
   return (
     <motion.div
       className={`stat-card${onClick ? ' clickable' : ''}`}
@@ -38,7 +40,7 @@ export default function StatCard({ label, value, icon, color, trend, delay = 0, 
         <div className="stat-card-label">{label}</div>
         {icon && <div className="stat-card-icon">{icon}</div>}
       </div>
-      <div className="stat-card-value num">{value}</div>
+      <div className={`stat-card-value num${isText ? ' is-text' : ''}`}>{value}</div>
       {trend && (
         <div className="stat-card-foot">
           <span className={`trend ${trend.direction}`}>

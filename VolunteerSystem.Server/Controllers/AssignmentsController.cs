@@ -14,8 +14,13 @@ namespace VolunteerSystem.Server.Controllers;
 public class AssignmentsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ILogger<AssignmentsController> _logger;
 
-    public AssignmentsController(AppDbContext db) => _db = db;
+    public AssignmentsController(AppDbContext db, ILogger<AssignmentsController> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
 
     // ============================================================
     // GET: /api/assignments?volunteerId=1&eventId=2&confirmed=true
@@ -25,11 +30,13 @@ public class AssignmentsController : ControllerBase
     public async Task<ActionResult<IEnumerable<AssignmentDto>>> GetAll(
         [FromQuery] int? volunteerId,
         [FromQuery] int? eventId,
-        [FromQuery] bool? confirmed)
+        [FromQuery] bool? confirmed,
+        CancellationToken ct)
     {
         var query = _db.Assignments
+            .AsNoTracking()
             .Include(a => a.volunteer)
-            .Include(a => a._event)   // <-- вот здесь: _event, а не event
+            .Include(a => a._event)
             .Include(a => a.role)
             .AsQueryable();
 
@@ -45,7 +52,7 @@ public class AssignmentsController : ControllerBase
         var list = await query
             .OrderByDescending(a => a.assigned_at)
             .Select(a => ToDto(a))
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(list);
     }
@@ -54,21 +61,20 @@ public class AssignmentsController : ControllerBase
     // GET: /api/assignments/my
     // ============================================================
     [HttpGet("my")]
-    public async Task<ActionResult<IEnumerable<AssignmentDto>>> My()
+    public async Task<ActionResult<IEnumerable<AssignmentDto>>> My(CancellationToken ct)
     {
-        var volunteerIdClaim = User.FindFirst("VolunteerId")?.Value;
-        if (volunteerIdClaim is null) return Forbid();
-
-        var vId = int.Parse(volunteerIdClaim);
+        if (!int.TryParse(User.FindFirst("VolunteerId")?.Value, out var vId))
+            return Forbid();
 
         var list = await _db.Assignments
+            .AsNoTracking()
             .Include(a => a.volunteer)
             .Include(a => a._event)
             .Include(a => a.role)
             .Where(a => a.volunteer_id == vId)
             .OrderByDescending(a => a.assigned_at)
             .Select(a => ToDto(a))
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(list);
     }
@@ -78,15 +84,16 @@ public class AssignmentsController : ControllerBase
     // ============================================================
     [HttpGet("{id:int}")]
     [Authorize(Roles = "Администратор,Менеджер")]
-    public async Task<ActionResult<AssignmentDto>> GetById(int id)
+    public async Task<ActionResult<AssignmentDto>> GetById(int id, CancellationToken ct)
     {
         var a = await _db.Assignments
+            .AsNoTracking()
             .Include(x => x.volunteer)
             .Include(x => x._event)
             .Include(x => x.role)
-            .FirstOrDefaultAsync(x => x.assignment_id == id);
+            .FirstOrDefaultAsync(x => x.assignment_id == id, ct);
 
-        if (a is null) return NotFound();
+        if (a is null) return NotFound(new { message = "Назначение не найдено" });
         return Ok(ToDto(a));
     }
 
@@ -95,15 +102,15 @@ public class AssignmentsController : ControllerBase
     // ============================================================
     [HttpPost]
     [Authorize(Roles = "Администратор,Менеджер")]
-    public async Task<ActionResult<AssignmentDto>> Create([FromBody] CreateAssignmentDto dto)
+    public async Task<ActionResult<AssignmentDto>> Create([FromBody] CreateAssignmentDto dto, CancellationToken ct)
     {
-        if (!await _db.Volunteers.AnyAsync(v => v.volunteer_id == dto.VolunteerId))
+        if (!await _db.Volunteers.AnyAsync(v => v.volunteer_id == dto.VolunteerId, ct))
             return BadRequest(new { message = "Волонтёр не найден" });
 
-        if (!await _db.Events.AnyAsync(e => e.event_id == dto.EventId))
+        if (!await _db.Events.AnyAsync(e => e.event_id == dto.EventId, ct))
             return BadRequest(new { message = "Мероприятие не найдено" });
 
-        if (!await _db.Roles.AnyAsync(r => r.role_id == dto.RoleId))
+        if (!await _db.Roles.AnyAsync(r => r.role_id == dto.RoleId, ct))
             return BadRequest(new { message = "Роль не найдена" });
 
         var a = new Assignment
@@ -119,15 +126,16 @@ public class AssignmentsController : ControllerBase
 
         try
         {
-            await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException sql)
         {
             // Сообщения из триггеров БД (RAISERROR) возвращаем клиенту
+            _logger.LogWarning("БД отклонила назначение: {Message}", sql.Message);
             return BadRequest(new { message = sql.Message });
         }
 
-        return await GetById(a.assignment_id);
+        return await GetById(a.assignment_id, ct);
     }
 
     // ============================================================
@@ -135,20 +143,21 @@ public class AssignmentsController : ControllerBase
     // ============================================================
     [HttpPut("{id:int}")]
     [Authorize(Roles = "Администратор,Менеджер")]
-    public async Task<IActionResult> Update(int id, [FromBody] UpdateAssignmentDto dto)
+    public async Task<IActionResult> Update(int id, [FromBody] UpdateAssignmentDto dto, CancellationToken ct)
     {
-        var a = await _db.Assignments.FindAsync(id);
-        if (a is null) return NotFound();
+        var a = await _db.Assignments.FirstOrDefaultAsync(x => x.assignment_id == id, ct);
+        if (a is null) return NotFound(new { message = "Назначение не найдено" });
 
         a.hours_actual = dto.HoursActual;
         a.confirmed = dto.Confirmed;
 
         try
         {
-            await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException sql)
         {
+            _logger.LogWarning("БД отклонила изменение часов: {Message}", sql.Message);
             return BadRequest(new { message = sql.Message });
         }
 
@@ -160,13 +169,13 @@ public class AssignmentsController : ControllerBase
     // ============================================================
     [HttpDelete("{id:int}")]
     [Authorize(Roles = "Администратор,Менеджер")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        var a = await _db.Assignments.FindAsync(id);
-        if (a is null) return NotFound();
+        var a = await _db.Assignments.FirstOrDefaultAsync(x => x.assignment_id == id, ct);
+        if (a is null) return NotFound(new { message = "Назначение не найдено" });
 
         _db.Assignments.Remove(a);
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
         return NoContent();
     }
 

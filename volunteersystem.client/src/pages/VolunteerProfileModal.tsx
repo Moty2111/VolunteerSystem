@@ -9,53 +9,11 @@ import { getLevel, getBadges } from '../utils/level';
 import { plural } from '../utils/format';
 import type { Volunteer } from '../types';
 import { Award, Plus, X, MapPin, Phone, Mail, Calendar, Check } from 'lucide-react';
-import {
-    LuStethoscope, LuCar, LuCalendarCheck, LuLanguages, LuCamera, LuMusic,
-    LuUtensils, LuLaptop, LuHandshake, LuUsers, LuTruck, LuPalette,
-    LuMegaphone, LuSprout, LuBaby, LuDog, LuBookOpen, LuMessageCircle,
-    LuClipboardList, LuWrench, LuDumbbell, LuGraduationCap, LuHeart
-} from 'react-icons/lu';
-import type { IconType } from 'react-icons';
+import { skillNameIcon, skillTone } from '../utils/skillLevels';
 
-/* иконка навыка по названию (react-icons) */
-const skillIcon = (name: string): IconType => {
-    const n = name.toLowerCase();
-    if (/первая помощь|мед|аптечк|health/.test(n)) return LuStethoscope;
-    if (/вод|авто|транспорт|категор|car|drive/.test(n)) return LuCar;
-    if (/мероприят|организ|ивент|координац|событи/.test(n)) return LuCalendarCheck;
-    if (/англ|язык|перевод|lingu/.test(n)) return LuLanguages;
-    if (/фот|виде|съёмк|съемк/.test(n)) return LuCamera;
-    if (/музык|звук|гитар|пиани|вокал/.test(n)) return LuMusic;
-    if (/кулин|готов|кухн|питани|барбекю/.test(n)) return LuUtensils;
-    if (/программ|компьютер|веб|it\b|1с|разработк/.test(n)) return LuLaptop;
-    if (/рукопож|переговор|партнер|партнёр/.test(n)) return LuHandshake;
-    if (/команд|групп|наставни|ментор/.test(n)) return LuUsers;
-    if (/достав|логист|груз|эвакуац/.test(n)) return LuTruck;
-    if (/рисов|дизайн|арт|живопис|краск|иллюстр/.test(n)) return LuPalette;
-    if (/реклам|агитац|привлеч|пиар|宣传/.test(n)) return LuMegaphone;
-    if (/сад|озелен|дерев|растени|эко|садов/.test(n)) return LuSprout;
-    if (/дет|юность|аниматор|детсад/.test(n)) return LuBaby;
-    if (/животн|приют|собак|кошк|vet/.test(n)) return LuDog;
-    if (/учеб|обуч|школ|лекц|курс|тренинг/.test(n)) return LuGraduationCap;
-    if (/психолог|поддержк|слушать|консультац|грепп|кризис/.test(n)) return LuMessageCircle;
-    if (/документ|отчет|бухгалтер|счет|заполн|таблиц/.test(n)) return LuClipboardList;
-    if (/ремонт|инструмент|техник|строитель/.test(n)) return LuWrench;
-    if (/спорт|фитнес|тренер|бег|турнир/.test(n)) return LuDumbbell;
-    return LuHeart;
-};
-
-/* цветовая гамма по уровню (как на странице «Навыки») */
-const toneForLevel = (level: string): string => {
-    switch (level) {
-        case 'Начальный': return 'tone-green';
-        case 'Средний': return 'tone-blue';
-        case 'Профессиональный': return 'tone-gold';
-        case 'A1': case 'A2': return 'tone-green';
-        case 'B1': case 'B2': return 'tone-blue';
-        case 'C1': case 'C2': return 'tone-violet';
-        default: return 'tone-pink';
-    }
-};
+/* иконка навыка по названию и цвет карточки — общие с страницей «Навыки» */
+const skillIcon = skillNameIcon;
+const toneForLevel = skillTone;
 
 interface Props {
     volunteer: Volunteer | null;
@@ -156,11 +114,11 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
                 </span>
 {
     volunteer.medBookValidUntil
-    ? <span className = "cool-tip"
+    ? <span className = "cool-tip tip-below"
         data-tip = {`Медкнижка действует до ${volunteer.medBookValidUntil} — допускает участие в мероприятиях с повышенными требованиями.`}>
         <Badge variant="success" icon={<Check size={11} />}> медкнижка до {volunteer.medBookValidUntil} </Badge>
     </span>
-              : < span className = "cool-tip"
+              : < span className = "cool-tip tip-below"
         data-tip = "У волонтёра нет медкнижки — участие в мероприятиях с повышенными требованиями ограничено.">
         <Badge variant="danger"> нет медкнижки </Badge>
     </span>}

@@ -134,8 +134,8 @@
     --bronze: #a55a1e;
 
     --text: #231732;
-    --text-2: #5d4f74;
-    --text-3: #9186a8;
+    --text-2: #56476d;
+    --text-3: #786b93;
     --text-inverse: #ffffff;
 
     --shadow-sm: 0 1px 2px rgba(90, 30, 60, 0.06);
@@ -269,7 +269,7 @@ button {
     flex-shrink: 0;
     transition: width .22s ease, background .3s;
     z-index: 40;
-    overflow: hidden;
+    /* без overflow: hidden — иначе подсказка кнопки «свернуть меню» обрезается */
 }
 
     .sidebar.collapsed {
@@ -944,6 +944,14 @@ button {
     font-variant-numeric: tabular-nums;
 }
 
+/* текстовое значение (например, уровень «Профессионал») — компактнее и с переносом */
+.stat-card-value.is-text {
+    font-size: clamp(19px, 1.6vw + 10px, 25px);
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
 .stat-card-foot {
     display: flex;
     align-items: center;
@@ -1059,6 +1067,19 @@ tbody tr.row-clickable {
     white-space: nowrap;
 }
 
+/* цветной квадрат с иконкой — как в карточке, только компактнее */.cell-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    color: #fff;
+    background: linear-gradient(135deg, var(--card-accent, #ff4d8d), var(--card-accent-2, #ff8a3d));
+    box-shadow: 0 4px 10px -4px color-mix(in srgb, var(--card-accent, #ff4d8d) 70%, transparent);
+}
+
 .cell-sub {
     font-size: 12px;
     color: var(--text-3);
@@ -1069,6 +1090,11 @@ tbody tr.row-clickable {
     display: flex;
     gap: 6px;
     justify-content: flex-end;
+}
+
+/* не переносить короткие значения (даты, числа) в таблицах */
+.nowrap {
+    white-space: nowrap;
 }
 
 /* ============================================================
@@ -1622,32 +1648,54 @@ tbody tr.row-clickable {
 }
 
 .toast {
+    position: relative;
     background: color-mix(in srgb, var(--surface) 92%, transparent);
     backdrop-filter: blur(12px);
     border: 1px solid var(--border-2);
     border-radius: var(--r-md);
-    padding: 12px 14px;
+    padding: 12px 14px 14px;
     display: flex;
     gap: 12px;
     align-items: flex-start;
     box-shadow: var(--shadow-md);
-    animation: slideIn .24s cubic-bezier(0.2, 0.9, 0.3, 1);
+    overflow: hidden;
     font-size: 14px;
+}
+
+.toast-text {
+    flex: 1;
+    min-width: 0;
+}
+
+/* тонкая полоса «оставшееся время» снизу */
+.toast-life {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    transform-origin: left center;
+    background: currentColor;
+    opacity: .35;
+    pointer-events: none;
 }
 
 .toast-success {
     border-left: 3px solid var(--success);
     box-shadow: 0 10px 26px color-mix(in srgb, var(--success) 18%, transparent);
+    color: var(--text);
 }
 
 .toast-error {
     border-left: 3px solid var(--danger);
     box-shadow: 0 10px 26px color-mix(in srgb, var(--danger) 18%, transparent);
+    color: var(--text);
 }
 
 .toast-info {
     border-left: 3px solid var(--info);
     box-shadow: 0 10px 26px color-mix(in srgb, var(--info) 18%, transparent);
+    color: var(--text);
 }
 
 .toast-icon {
@@ -2501,16 +2549,19 @@ tbody tr.row-clickable {
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     padding: 18px;
-    overflow: hidden;
+    /* без overflow: hidden — иначе подсказка (cool-tip) внутри карточки обрезается */
     cursor: pointer;
     transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 
 .vcard:hover,
-.vcard:focus-visible {
+.vcard:focus-visible,
+.vcard:focus-within {
     border-color: var(--primary);
     transform: translateY(-3px);
     box-shadow: var(--shadow-md);
+    /* поднимаем карточку над соседями, чтобы её подсказка не перекрывалась */
+    z-index: 40;
 }
 
 /* угловой индикатор (медкнижка / счётчик) */
@@ -2518,7 +2569,6 @@ tbody tr.row-clickable {
     position: absolute;
     top: 14px;
     right: 14px;
-    z-index: 1;
     width: 26px;
     height: 26px;
     border-radius: 50%;
@@ -2564,8 +2614,8 @@ tbody tr.row-clickable {
 
 .vcard-avatar {
     flex: 0 0 auto;
-    width: 46px;
-    height: 46px;
+    width: 48px;      /* как .avatar-lg у волонтёрских карточек */
+    height: 48px;
     border-radius: 50%;
     display: grid;
     place-items: center;
@@ -4333,7 +4383,7 @@ tbody tr.row-clickable {
         visibility: hidden;
         pointer-events: none;
         transition: all .18s cubic-bezier(.2,.8,.3,1);
-        z-index: 60;
+        z-index: 9000;
     }
 
     .cool-tip::before {
@@ -4347,7 +4397,7 @@ tbody tr.row-clickable {
         opacity: 0;
         visibility: hidden;
         transition: all .18s cubic-bezier(.2,.8,.3,1);
-        z-index: 61;
+        z-index: 9001;
     }
 
     .cool-tip:hover::after,
@@ -4900,4 +4950,329 @@ tbody tr.row-clickable {
     font-size: 14.5px;
     line-height: 1.6;
     margin-top: 8px;
+}
+
+/* ============================================================
+   ДВИЖЕНИЕ И ДОСТУПНОСТЬ
+   Единые токены анимаций, видимый фокус, служебные классы.
+   ============================================================ */
+
+:root {
+    --dur-fast: .14s;
+    --dur-base: .22s;
+    --dur-slow: .34s;
+    --ease-out: cubic-bezier(.2, .9, .3, 1);
+    --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* ---------- только для скринридеров ---------- */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ---------- «к содержанию» ---------- */
+.skip-link {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 200;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+    box-shadow: var(--shadow-lg);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    transform: translateY(-160%);
+    opacity: 0;
+    transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-base) ease;
+    pointer-events: none;
+}
+
+    .skip-link:focus-visible {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+/* ---------- единый видимый фокус ----------
+   :where() даёт нулевую специфичность, поэтому собственные стили
+   компонентов (кнопки, карточки) остаются главнее. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+}
+
+:where(input, select, textarea):focus-visible {
+    outline-offset: 1px;
+}
+
+/* для тёмной темы кольцо светлее — иначе сливается с фоном */
+[data-theme="dark"] :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: var(--primary-300);
+}
+
+/* рабочая область фокусируется программно (переход между страницами,
+   «к содержанию») — рамка вокруг всего экрана там не нужна */
+.main:focus,
+.main:focus-visible,
+.modal:focus,
+.modal:focus-visible {
+    outline: none;
+}
+
+/* ---------- плавная прокрутка (кроме «уменьшить движение») ---------- */
+@media (prefers-reduced-motion: no-preference) {
+    html {
+        scroll-behavior: smooth;
+    }
+}
+
+/* ---------- загрузка страницы (Skeleton) ---------- */
+.page-loader {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding-top: 4px;
+}
+
+.page-loader-head {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.page-loader-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+/* ---------- палитра команд (Ctrl+K) ---------- */
+.cp-backdrop {
+    align-items: flex-start;
+    padding-top: 12vh;
+}
+
+.cp {
+    width: 100%;
+    max-width: 620px;
+    background: var(--surface);
+    border: 1px solid var(--border-2);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg), 0 0 70px color-mix(in srgb, var(--primary) 10%, transparent);
+    overflow: hidden;
+}
+
+.cp-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+}
+
+.cp-head-icon {
+    color: var(--text-3);
+    flex-shrink: 0;
+}
+
+.cp-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+}
+
+.cp-kbd,
+.cp-foot kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text-3);
+}
+
+.cp-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.cp-group {
+    padding: 8px 12px 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--text-3);
+    font-weight: 700;
+}
+
+.cp-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    border-radius: 8px;
+    text-align: left;
+    color: var(--text);
+    transition: background var(--dur-fast) ease;
+}
+
+    .cp-item.is-active {
+        background: var(--surface-2);
+    }
+
+    .cp-item-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: var(--surface-2);
+        color: var(--text-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+    }
+
+        .cp-item-icon.is-active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+.cp-item-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.cp-item-label {
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cp-item-sub {
+    font-size: 11px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cp-empty {
+    padding: 30px 24px 34px;
+    text-align: center;
+    color: var(--text-3);
+}
+
+.cp-empty-icon {
+    color: color-mix(in srgb, var(--text-3) 60%, transparent);
+    margin-bottom: 8px;
+}
+
+.cp-empty-title {
+    font-family: var(--font-head);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-2);
+}
+
+.cp-empty-text {
+    font-size: 12.5px;
+    margin-top: 4px;
+}
+
+.cp-foot {
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface-2);
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-3);
+}
+
+/* ---------- печать: отчёты и таблицы ---------- */
+@media print {
+    :root {
+        --bg: #fff;
+        --bg-2: #fff;
+        --surface: #fff;
+        --surface-2: #fafafa;
+        --border: #d9d9d9;
+        --text: #111;
+        --text-2: #444;
+    }
+
+    body::before,
+    .sidebar,
+    .topbar,
+    .bottom-nav,
+    .toast-wrap,
+    .page-header .btn,
+    .filters,
+    .btn,
+    .icon-btn,
+    .mobile-backdrop {
+        display: none !important;
+    }
+
+    .app-shell {
+        display: block;
+    }
+
+    .main-content {
+        padding: 0;
+        max-width: none;
+    }
+
+    .card,
+    .vcard,
+    .table-wrap,
+    .stat-card {
+        break-inside: avoid;
+        box-shadow: none !important;
+        border-color: #d9d9d9 !important;
+    }
+
+    .page-title {
+        background: none;
+        color: #111 !important;
+        -webkit-text-fill-color: #111;
+        filter: none;
+    }
+
+    a[href]::after {
+        content: '';
+    }
 }

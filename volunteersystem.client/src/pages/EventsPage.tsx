@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
 import EventMap from '../components/EventMap';
-import { Badge, EmptyState, Skeleton } from '../components/ui';
+import { Badge, EmptyState, Skeleton, ViewToggle, useViewMode } from '../components/ui';
 import { IllCalendar } from '../components/illustrations';
 import {
     Plus, Search, Trash2, Calendar, MapPin, Users, Clock, Check, X,
@@ -23,6 +23,14 @@ import posterSport from '../assets/events/sport.svg';
 import posterEducation from '../assets/events/education.svg';
 
 const STATUSES = ['Запланировано', 'Идёт', 'Завершено', 'Отменено'] as const;
+
+/** Цвет бейджа статуса — одинаково для карточек и таблицы. */
+const statusVariant = (status: string): 'success' | 'warning' | 'muted' | 'accent' => {
+    if (status === 'Завершено') return 'success';
+    if (status === 'Идёт') return 'warning';
+    if (status === 'Отменено') return 'muted';
+    return 'accent';
+};
 const TYPE_LABELS: Record<number, string> = {
     1: 'Социальное', 2: 'Экологическое', 3: 'Культурное',
     4: 'Благотворительное', 5: 'Спортивное', 6: 'Образовательное'
@@ -75,6 +83,7 @@ export default function EventsPage() {
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [details, setDetails] = useState<EventItem | null>(null);
+    const [view, setView] = useViewMode('events');
 
     const canEdit = user?.role === 'Администратор' || user?.role === 'Менеджер';
     const isVolunteer = user?.role === 'Волонтёр';
@@ -235,6 +244,7 @@ value = { search } onChange = { e => setSearch(e.target.value) } style = {{ minW
     < button className = "btn btn-secondary" onClick = { load } >
         <Search size={ 16 } /> Обновить
             </button>
+            <ViewToggle view = { view } onChange = { setView } label = "Вид списка мероприятий" />
             </div>
 
 {
@@ -255,6 +265,44 @@ action = { canEdit && items.length === 0 ? (
             </button>
             ) : undefined}
           />
+    </div>
+      ) : view === 'table' ? (
+    <div className="table-wrap">
+        <table className="sticky-first">
+            <thead>
+                <tr>
+                    <th>Мероприятие</th>
+                    <th>Тип</th>
+                    <th>Дата</th>
+                    <th>Место</th>
+                    <th>Статус</th>
+                    <th className="num">Участников</th>
+                </tr>
+            </thead>
+            <tbody>
+                { filtered.map(e => {
+                    const d = new Date(e.dateStart);
+                    return (
+                        <tr key= { e.eventId } className = "row-clickable" onClick = {() => setDetails(e)} >
+                            <td>
+                                <div className="cell-name">{ e.eventName }</div>
+                                <div className="cell-sub num">ID #{ e.eventId }</div>
+                            </td>
+                            <td>{ e.eventTypeName || '—' }</td>
+                            <td className="nowrap">
+                                <div className="cell-name">{ d.toLocaleDateString('ru-RU') }</div>
+                                <div className="cell-sub">
+                                    { d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }
+                                </div>
+                            </td>
+                            <td>{ e.location }</td>
+                            <td><Badge variant={ statusVariant(e.status) }> { e.status } </Badge></td>
+                            <td className="num">{ e.assignmentsCount ?? 0 }</td>
+                        </tr>
+                    );
+                }) }
+            </tbody>
+        </table>
     </div>
       ) : (
     <motion.div

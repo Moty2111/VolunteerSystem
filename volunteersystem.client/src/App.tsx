@@ -1,109 +1,90 @@
-﻿import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+﻿import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
+import PageLoader from './components/PageLoader';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
-import VolunteersPage from './pages/VolunteersPage';
-import EventsPage from './pages/EventsPage';
-import AssignmentsPage from './pages/AssignmentsPage';
-import MyAssignmentsPage from './pages/MyAssignmentsPage';
-import PartnersPage from './pages/PartnersPage';
-import ReportsPage from './pages/ReportsPage';
-import SkillsPage from './pages/SkillsPage';
-import ProfilePage from './pages/ProfilePage';
-import NotificationsPage from './pages/NotificationsPage';
-import NotFoundPage from './pages/NotFoundPage';
-import CalendarPage from './pages/CalendarPage';
-import AuditPage from './pages/AuditPage';
-import UsersPage from './pages/UsersPage';
-import MySkillsPage from './pages/MySkillsPage';
-import MyProgressPage from './pages/MyProgressPage';
+
+/* Страницы грузим отдельными чанками: начальный бандл сразу тонкий,
+   тяжёлые библиотеки (recharts, карты) попадают в бандл только своей страницы. */
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const VolunteersPage = lazy(() => import('./pages/VolunteersPage'));
+const EventsPage = lazy(() => import('./pages/EventsPage'));
+const AssignmentsPage = lazy(() => import('./pages/AssignmentsPage'));
+const MyAssignmentsPage = lazy(() => import('./pages/MyAssignmentsPage'));
+const PartnersPage = lazy(() => import('./pages/PartnersPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const SkillsPage = lazy(() => import('./pages/SkillsPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const MySkillsPage = lazy(() => import('./pages/MySkillsPage'));
+const MyProgressPage = lazy(() => import('./pages/MyProgressPage'));
+
+const STAFF = ['Администратор', 'Менеджер'];
 
 export default function App() {
     return (
         <AuthProvider>
-        <BrowserRouter>
-        <Routes>
-        <Route path= "/login" element = {< LoginPage />} />
-            < Route path = "/register" element = {< RegisterPage />} />
+            <BrowserRouter>
+                <Suspense fallback={<PageLoader />}>
+                    <Routes>
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="/register" element={<RegisterPage />} />
 
-                < Route element = {< ProtectedRoute > <Layout /></ProtectedRoute >}>
-                    <Route path="/dashboard" element = {< DashboardPage />} />
-                        < Route path = "/events" element = {< EventsPage />} />
-                                < Route path = "/profile" element = {< ProfilePage />} />
-                                    < Route path = "/notifications" element = {< NotificationsPage />} />
-                                < Route path = "/calendar" element = {< CalendarPage />} />
+                        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                            <Route path="/dashboard" element={<DashboardPage />} />
+                            <Route path="/events" element={<EventsPage />} />
+                            <Route path="/profile" element={<ProfilePage />} />
+                            <Route path="/notifications" element={<NotificationsPage />} />
+                            <Route path="/calendar" element={<CalendarPage />} />
 
+                            <Route path="/volunteers" element={
+                                <ProtectedRoute allowedRoles={STAFF}><VolunteersPage /></ProtectedRoute>
+                            } />
+                            <Route path="/assignments" element={
+                                <ProtectedRoute allowedRoles={STAFF}><AssignmentsPage /></ProtectedRoute>
+                            } />
+                            <Route path="/skills" element={
+                                <ProtectedRoute allowedRoles={STAFF}><SkillsPage /></ProtectedRoute>
+                            } />
+                            <Route path="/reports" element={
+                                <ProtectedRoute allowedRoles={STAFF}><ReportsPage /></ProtectedRoute>
+                            } />
 
-                                < Route path = "/volunteers" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор', 'Менеджер']} >
-    <VolunteersPage />
-    </ProtectedRoute>
-            } />
+                            <Route path="/partners" element={
+                                <ProtectedRoute allowedRoles={['Администратор']}><PartnersPage /></ProtectedRoute>
+                            } />
+                            <Route path="/users" element={
+                                <ProtectedRoute allowedRoles={['Администратор']}><UsersPage /></ProtectedRoute>
+                            } />
+                            <Route path="/audit" element={
+                                <ProtectedRoute allowedRoles={['Администратор']}><AuditPage /></ProtectedRoute>
+                            } />
 
-    < Route path = "/assignments" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор', 'Менеджер']} >
-    <AssignmentsPage />
-    </ProtectedRoute>
-            } />
+                            <Route path="/my-assignments" element={
+                                <ProtectedRoute allowedRoles={['Волонтёр']}><MyAssignmentsPage /></ProtectedRoute>
+                            } />
+                            <Route path="/my-skills" element={
+                                <ProtectedRoute allowedRoles={['Волонтёр']}><MySkillsPage /></ProtectedRoute>
+                            } />
+                            <Route path="/my-progress" element={
+                                <ProtectedRoute allowedRoles={['Волонтёр']}><MyProgressPage /></ProtectedRoute>
+                            } />
 
-    < Route path = "/skills" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор', 'Менеджер']} >
-    <SkillsPage />
-    </ProtectedRoute>
-            } />
+                            {/* 404 — внутри оболочки, чтобы сохранить меню и топбар */}
+                            <Route path="*" element={<NotFoundPage />} />
+                        </Route>
 
-    < Route path = "/partners" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор']} >
-    <PartnersPage />
-    </ProtectedRoute>
-            } />
-
-    < Route path = "/reports" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор', 'Менеджер']} >
-    <ReportsPage />
-    </ProtectedRoute>
-            } />
-
-    < Route path = "/my-assignments" element = {
-              < ProtectedRoute allowedRoles = { ['Волонтёр']} >
-    <MyAssignmentsPage />
-    </ProtectedRoute>
-            } />
-
-    < Route path = "/my-skills" element = {
-              < ProtectedRoute allowedRoles = { ['Волонтёр']} >
-    <MySkillsPage />
-    </ProtectedRoute>
-            } />
-
-    < Route path = "/my-progress" element = {
-              < ProtectedRoute allowedRoles = { ['Волонтёр']} >
-    <MyProgressPage />
-    </ProtectedRoute>
-            } />
-
-    < Route path = "/audit" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор']} >
-    <AuditPage />
-    </ProtectedRoute>
-            } />
-
-    < Route path = "/users" element = {
-              < ProtectedRoute allowedRoles = { ['Администратор']} >
-    <UsersPage />
-    </ProtectedRoute>
-            } />
-
-                    {/* 404 — внутри оболочки, чтобы сохранить меню и топбар */}
-                    <Route path="*" element={ < NotFoundPage />} />
-    </Route>
-
-    < Route path = "/" element = {< Navigate to = "/dashboard" replace />} />
-            </Routes>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    </Routes>
+                </Suspense>
             </BrowserRouter>
-            </AuthProvider>
-  );
+        </AuthProvider>
+    );
 }

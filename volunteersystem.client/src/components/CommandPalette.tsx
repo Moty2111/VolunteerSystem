@@ -46,7 +46,7 @@ export default function CommandPalette({ open, onClose }: Props) {
       setSelectedIdx(0);
       return;
     }
-    setTimeout(() => inputRef.current?.focus(), 30);
+    const t = setTimeout(() => inputRef.current?.focus(), 30);
     (async () => {
       try {
         const [v, e] = await Promise.all([
@@ -60,7 +60,16 @@ export default function CommandPalette({ open, onClose }: Props) {
         /* ignore */
       }
     })();
+    return () => clearTimeout(t);
   }, [open, isStaff]);
+
+  /* пока палитра открыта — фон не скроллится */
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
 
   const pages: Item[] = useMemo(() => {
     const list: Item[] = [
@@ -124,6 +133,17 @@ export default function CommandPalette({ open, onClose }: Props) {
     ).slice(0, 20);
   }, [query, pages, volItems, evItems]);
 
+  /* группировка с сохранением сквозного индекса для клавиатуры */
+  const groups = useMemo(() => {
+    const out: { name: string; items: { item: Item; idx: number }[] }[] = [];
+    filtered.forEach((item, idx) => {
+      const last = out[out.length - 1];
+      if (last && last.name === item.group) last.items.push({ item, idx });
+      else out.push({ name: item.group, items: [{ item, idx }] });
+    });
+    return out;
+  }, [filtered]);
+
   useEffect(() => {
     setSelectedIdx(0);
   }, [query]);
@@ -151,161 +171,84 @@ export default function CommandPalette({ open, onClose }: Props) {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
+    } else if (e.key === 'Tab') {
+      /* фокус остаётся в поле поиска: список управляется стрелками */
+      e.preventDefault();
+      inputRef.current?.focus();
     }
   };
-
-  const groups: Record<string, Item[]> = {};
-  filtered.forEach(i => {
-    (groups[i.group] ||= []).push(i);
-  });
-  let runningIdx = -1;
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
-          className="modal-backdrop"
+          className="modal-backdrop cp-backdrop"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          style={{ alignItems: 'flex-start', paddingTop: '12vh' }}
         >
           <motion.div
+            className="cp"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Поиск по системе"
             onClick={e => e.stopPropagation()}
             initial={{ opacity: 0, y: -8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.18 }}
-            style={{
-              width: '100%',
-              maxWidth: 620,
-              background: 'var(--surface)',
-              border: '1px solid var(--border-2)',
-              borderRadius: 'var(--r-lg)',
-              boxShadow: 'var(--shadow-lg)',
-              overflow: 'hidden'
-            }}
           >
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '14px 18px',
-              borderBottom: '1px solid var(--border)'
-            }}>
-              <Search size={18} style={{ color: 'var(--text-3)' }} />
+            <div className="cp-head">
+              <Search size={18} className="cp-head-icon" />
               <input
                 ref={inputRef}
+                className="cp-input"
+                role="combobox"
+                aria-expanded="true"
+                aria-controls="cp-list"
+                aria-autocomplete="list"
+                aria-activedescendant={filtered[selectedIdx] ? `cp-opt-${selectedIdx}` : undefined}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Поиск волонтёров, мероприятий, разделов…"
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  color: 'var(--text)',
-                  fontSize: 15,
-                  fontFamily: 'inherit'
-                }}
               />
-              <kbd style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 10,
-                padding: '3px 6px',
-                borderRadius: 4,
-                background: 'var(--surface-2)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-3)'
-              }}>
-                ESC
-              </kbd>
+              <kbd className="cp-kbd">ESC</kbd>
             </div>
 
-            <div ref={listRef} style={{ maxHeight: 400, overflowY: 'auto', padding: 6 }}>
+            <div className="cp-list" id="cp-list" role="listbox" ref={listRef}>
               {filtered.length === 0 ? (
-                <div style={{
-                  padding: 32,
-                  textAlign: 'center',
-                  color: 'var(--text-3)',
-                  fontSize: 13
-                }}>
-                  Ничего не найдено
+                <div className="cp-empty">
+                  <Search size={26} className="cp-empty-icon" />
+                  <div className="cp-empty-title">Ничего не найдено</div>
+                  <div className="cp-empty-text">Попробуйте другой запрос — например, «навыки» или «отчёты»</div>
                 </div>
               ) : (
-                Object.entries(groups).map(([group, items]) => (
-                  <div key={group}>
-                    <div style={{
-                      padding: '8px 12px 4px',
-                      fontSize: 10,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      color: 'var(--text-3)',
-                      fontWeight: 700
-                    }}>
-                      {group}
-                    </div>
-                    {items.map(item => {
-                      runningIdx++;
-                      const active = runningIdx === selectedIdx;
+                groups.map(g => (
+                  <div key={g.name} role="group" aria-label={g.name}>
+                    <div className="cp-group">{g.name}</div>
+                    {g.items.map(({ item, idx }) => {
+                      const active = idx === selectedIdx;
                       return (
                         <button
                           key={item.id}
-                          data-idx={runningIdx}
+                          id={`cp-opt-${idx}`}
+                          data-idx={idx}
+                          role="option"
+                          aria-selected={active}
+                          tabIndex={-1}
+                          className={`cp-item${active ? ' is-active' : ''}`}
                           onClick={() => { item.action(); onClose(); }}
-                          onMouseEnter={() => setSelectedIdx(runningIdx)}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 12,
-                            width: '100%',
-                            padding: '10px 12px',
-                            background: active ? 'var(--surface-2)' : 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            borderRadius: 8,
-                            textAlign: 'left',
-                            color: 'var(--text)',
-                            fontFamily: 'inherit'
-                          }}
+                          onMouseEnter={() => setSelectedIdx(idx)}
                         >
-                          <span style={{
-                            width: 30,
-                            height: 30,
-                            borderRadius: 8,
-                            background: active ? 'var(--primary)' : 'var(--surface-2)',
-                            color: active ? '#fff' : 'var(--text-2)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0
-                          }}>
+                          <span className={`cp-item-icon${active ? ' is-active' : ''}`}>
                             {item.icon}
                           </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{
-                              fontSize: 13,
-                              fontWeight: 500,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              {item.label}
-                            </div>
-                            {item.sub && (
-                              <div style={{
-                                fontSize: 11,
-                                color: 'var(--text-3)',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}>
-                                {item.sub}
-                              </div>
-                            )}
-                          </div>
+                          <span className="cp-item-text">
+                            <span className="cp-item-label">{item.label}</span>
+                            {item.sub && <span className="cp-item-sub">{item.sub}</span>}
+                          </span>
                         </button>
                       );
                     })}
@@ -314,18 +257,10 @@ export default function CommandPalette({ open, onClose }: Props) {
               )}
             </div>
 
-            <div style={{
-              padding: '8px 14px',
-              borderTop: '1px solid var(--border)',
-              background: 'var(--surface-2)',
-              display: 'flex',
-              gap: 16,
-              fontSize: 11,
-              color: 'var(--text-3)'
-            }}>
-              <span><kbd style={{ fontFamily: 'var(--font-mono)' }}>↑↓</kbd> навигация</span>
-              <span><kbd style={{ fontFamily: 'var(--font-mono)' }}>↵</kbd> открыть</span>
-              <span><kbd style={{ fontFamily: 'var(--font-mono)' }}>ESC</kbd> закрыть</span>
+            <div className="cp-foot">
+              <span><kbd>↑↓</kbd> навигация</span>
+              <span><kbd>↵</kbd> открыть</span>
+              <span><kbd>ESC</kbd> закрыть</span>
             </div>
           </motion.div>
         </motion.div>

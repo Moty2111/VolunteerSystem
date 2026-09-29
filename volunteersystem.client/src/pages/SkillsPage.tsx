@@ -4,11 +4,20 @@ import { skillsApi, type Skill } from '../api/skills';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
-import { Badge, EmptyState, Skeleton } from '../components/ui';
+import { Badge, EmptyState, Skeleton, ViewToggle, useViewMode } from '../components/ui';
 import { IllAward } from '../components/illustrations';
 import { plural } from '../utils/format';
-import { SKILL_LEVELS as LEVELS, skillLevelVariant as levelVariant, skillIcon as iconFor, skillTone as toneFor } from '../utils/skillLevels';
-import { Plus, Trash2, Search, Users, Target } from 'lucide-react';
+import {
+    SKILL_LEVELS as LEVELS,
+    skillLevelVariant as levelVariant,
+    skillNameIcon as iconFor,
+    skillTone as toneFor,
+    skillLevelHint as levelHint,
+    skillCategory
+} from '../utils/skillLevels';
+import { Plus, Trash2, Search, Users, Target, Award, Info, ArrowDownUp } from 'lucide-react';
+
+type SortKey = 'name' | 'level' | 'popular';
 
 const groupByLevel = (skills: Skill[]) => {
     const map = new Map<string, Skill[]>();
@@ -28,6 +37,8 @@ export default function SkillsPage() {
     const [search, setSearch] = useState('');
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({ skillName: '', level: 'Начальный' });
+    const [view, setView] = useViewMode('skills');
+    const [sort, setSort] = useState<SortKey>('level');
 
     const canEdit = user?.role === 'Администратор' || user?.role === 'Менеджер';
     const isAdmin = user?.role === 'Администратор';
@@ -47,10 +58,32 @@ export default function SkillsPage() {
     useEffect(() => { load(); }, []);
 
     const filtered = useMemo(() => {
-        if (!search) return items;
-        const q = search.toLowerCase();
-        return items.filter(s => s.skillName.toLowerCase().includes(q));
-    }, [items, search]);
+        const base = !search
+            ? items
+            : (() => {
+                const q = search.toLowerCase();
+                return items.filter(s => s.skillName.toLowerCase().includes(q));
+            })();
+
+        /* в табличном виде сортировка особенно полезна — в карточках
+           данные уже сгруппированы по уровню */
+        if (view === 'cards' || !sort) return base;
+
+        const byLevel = (level: string) => LEVELS.indexOf(level);
+        return [...base].sort((a, b) => {
+            switch (sort) {
+                case 'name':
+                    return a.skillName.localeCompare(b.skillName, 'ru');
+                case 'popular':
+                    return (b.assignedCount || 0) - (a.assignedCount || 0) ||
+                        a.skillName.localeCompare(b.skillName, 'ru');
+                case 'level':
+                default:
+                    return byLevel(a.level) - byLevel(b.level) ||
+                        a.skillName.localeCompare(b.skillName, 'ru');
+            }
+        });
+    }, [items, search, view, sort]);
 
     const grouped = useMemo(() => groupByLevel(filtered), [filtered]);
 
@@ -116,11 +149,25 @@ export default function SkillsPage() {
             <span className="input-icon" > <Search size={ 15 } /></span >
                 <input
             className="input"
-placeholder = "Поиск навыка…"
-value = { search }
-onChange = { e => setSearch(e.target.value) }
+            placeholder = "Поиск навыка…"
+            value = { search }
+            onChange = { e => setSearch(e.target.value) }
     />
     </div>
+        <div className="sort-group" >
+            <ArrowDownUp size = { 14 } />
+            <select
+                className = "select"
+                value = { sort }
+                onChange = { e => setSort(e.target.value as SortKey) }
+                aria-label = "Сортировка"
+            >
+                <option value = "name" > По названию </option>
+                <option value = "level" > По уровню </option>
+                <option value = "popular" > По популярности </option>
+            </select>
+        </div>
+        <ViewToggle view = { view } onChange = { setView } label = "Вид списка навыков" />
     </div>
 
 {
@@ -144,6 +191,60 @@ action = { canEdit && items.length === 0 ? (
             </button>
             ) : undefined}
           />
+    </div>
+      ) : view === 'table' ? (
+    <div className="table-wrap">
+        <table className="sticky-first">
+            <thead>
+                <tr>
+                    <th>Навык</th>
+                    <th>Категория</th>
+                    <th>Уровень</th>
+                    <th className="num">Назначений</th>
+                    {isAdmin && <th aria-label="Действия" />}
+                </tr>
+            </thead>
+            <tbody>
+                { filtered.map(s => {
+                    const Icon = iconFor(s.skillName, s.level);
+                    const assigned = s.assignedCount || 0;
+                    return (
+                        <tr key= { s.skillId }>
+                            <td>
+                                <div className="cell-person">
+                                    <span className={ `cell-icon ${toneFor(s.level) }` }>
+                                        <Icon size={ 16 } />
+                                    </span>
+                                    <div>
+                                        <div className="cell-name">{ s.skillName }</div>
+                                        <div className="cell-sub num">ID #{ s.skillId }</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span className="skill-chip">{ skillCategory(s.skillName) }</span></td>
+                            <td>
+                                <Badge variant={ levelVariant(s.level) }> { s.level } </Badge>
+                            </td>
+                            <td className="num">{ assigned }</td>
+                            {
+                                isAdmin && (
+                                    <td className="row-actions">
+                                        <button
+                                            className="btn btn-icon btn-danger"
+                                            onClick = {() => handleDelete(s.skillId) }
+                                            title = "Удалить навык"
+                                            aria-label = "Удалить навык"
+                                        >
+                                            <Trash2 size={ 14 } />
+                                        </button>
+                                    </td>
+                                )
+                            }
+                        </tr>
+                    );
+                }) }
+            </tbody>
+        </table>
     </div>
       ) : (
     <div style= {{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -172,30 +273,31 @@ action = { canEdit && items.length === 0 ? (
 
     <AnimatePresence>
     {
-        list.map((s, i) => {
+    list.map((s, i) => {
             const assigned = s.assignedCount || 0;
+            const Icon = iconFor(s.skillName, s.level);
             return (
             <motion.div
                       key= { s.skillId }
-                      initial = {{ opacity: 0, y: 8 }}
+                      initial = {{ opacity: 0, y: 12 }}
 animate = {{ opacity: 1, y: 0 }}
 exit = {{ opacity: 0, scale: 0.95 }}
-transition = {{ delay: i * 0.02 }}
-className = {`vcard is-static ${toneFor(s.level)}`}
+transition = {{ delay: i * 0.03 }}
+className = {`vcard ${toneFor(s.level)}`}
                     >
     <div className= {`vcard-corner cool-tip ${assigned ? '' : 'is-muted'}`}
     data-tip = {
         assigned
-            ? `Назначен ${assigned} ${plural(assigned, ['волонтёру', 'волонтёрам', 'волонтёрам'])}. Уровень: ${s.level}.`
-            : 'Пока не назначен ни одному волонтёру. Добавьте навык волонтёру на его карточке.'
+            ? `Назначен ${assigned} ${plural(assigned, ['волонтёру', 'волонтёрам', 'волонтёрам'])}.`
+            : 'Пока не назначен ни одному волонтёру. Назначьте навык в профиле волонтёра.'
     }
 >
     <Users size={ 14 } />
         </div>
 
     < div className = "vcard-head" >
-        <div className="vcard-avatar" >
-            { (() => { const Icon = iconFor(s.level); return <Icon size={ 22} strokeWidth = { 2.2} />; })() }
+        <div className = "vcard-avatar" >
+            <Icon size={ 22 } strokeWidth = { 2.2 } />
         </div>
             < div className = "vcard-main" >
                 <div className="vcard-name" title = { s.skillName } > { s.skillName } </div>
@@ -204,7 +306,7 @@ className = {`vcard is-static ${toneFor(s.level)}`}
 <span>
 {
     assigned > 0
-    ? `Есть у ${assigned} ${plural(assigned, ['волонтёра', 'волонтёров', 'волонтёров'])}`
+        ? `Есть у ${assigned} ${plural(assigned, ['волонтёра', 'волонтёров', 'волонтёров'])}`
         : 'Никому не назначен'
 }
 </span>
@@ -215,23 +317,31 @@ className = {`vcard is-static ${toneFor(s.level)}`}
     </div>
     </div>
 
-    < div className = "power-row" >
-        <div className="power-bar" >
-            <div className="power-fill" style = {{
-    width: `${Math.min(100, Math.max(6, assigned * 14))}%`
-}} />
-    </div>
-    < span className = "power-num" >
+    < div className = "vcard-rows" >
+        <div className="vcard-row" >
+            <Award size={ 13 } /> <span>{ s.level } — { levelHint(s.level) }</span>
+        </div>
+        <div className="vcard-row" >
+            <Info size={ 13 } />
+            <span>
 {
     assigned > 0
-    ? `${assigned} ${plural(assigned, ['волонтёр', 'волонтёра', 'волонтёров'])}`
-    : 'не назначен'
+        ? `Используют ${assigned} ${plural(assigned, ['человек', 'человека', 'человек'])}`
+        : 'Навык ещё не используется'
 }
 </span>
+        </div>
+    </div>
+
+    <div className = "vcard-skills" >
+        <span className="skill-chip" >
+            <Icon size={ 10 } />
+            { skillCategory(s.skillName) }
+        </span>
     </div>
 
     < div className = "vcard-foot" >
-        <div className="vcard-id" >
+        <div className = "vcard-id" >
             <Target size={ 12 } />
                 < span > ID #{ s.skillId } </span>
                 </div>

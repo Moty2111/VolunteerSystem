@@ -11,19 +11,22 @@ namespace VolunteerSystem.Server.Controllers;
 [Authorize]
 public class UsersController : ControllerBase
 {
-    private static readonly string[] AllowedRoles =
-        { "Администратор", "Менеджер", "Волонтёр" };
-
     private readonly AppDbContext _db;
+    private readonly ILogger<UsersController> _logger;
 
-    public UsersController(AppDbContext db) => _db = db;
+    public UsersController(AppDbContext db, ILogger<UsersController> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
 
     // GET: /api/users — список учётных записей (без паролей)
     [HttpGet]
     [Authorize(Roles = "Администратор")]
-    public async Task<ActionResult<IEnumerable<SystemUserDto>>> GetAll()
+    public async Task<ActionResult<IEnumerable<SystemUserDto>>> GetAll(CancellationToken ct)
     {
         var list = await _db.SystemUsers
+            .AsNoTracking()
             .OrderByDescending(u => u.created_at)
             .Select(u => new SystemUserDto
             {
@@ -35,7 +38,7 @@ public class UsersController : ControllerBase
                 IsActive = u.is_active,
                 CreatedAt = u.created_at
             })
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(list);
     }
@@ -43,20 +46,23 @@ public class UsersController : ControllerBase
     // PUT: /api/users/5/role — смена роли (нельзя менять свою)
     [HttpPut("{id:int}/role")]
     [Authorize(Roles = "Администратор")]
-    public async Task<IActionResult> UpdateRole(int id, [FromBody] UpdateUserRoleDto dto)
+    public async Task<IActionResult> UpdateRole(int id, [FromBody] UpdateUserRoleDto dto, CancellationToken ct)
     {
-        if (!AllowedRoles.Contains(dto.Role))
+        if (!UpdateUserRoleDto.Roles.Contains(dto.Role))
             return BadRequest(new { message = "Недопустимая роль" });
 
-        var currentId = User.FindFirst("UserId")?.Value;
-        if (currentId is not null && int.Parse(currentId) == id)
+        if (CurrentUserId() == id)
             return BadRequest(new { message = "Нельзя менять роль собственной учётной записи" });
 
-        var user = await _db.SystemUsers.FindAsync(id);
-        if (user is null) return NotFound();
+        var user = await _db.SystemUsers.FindAsync([id], ct);
+        if (user is null) return NotFound(new { message = "Пользователь не найден" });
 
+        var oldRole = user.system_role;
         user.system_role = dto.Role;
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Роль пользователя {Login} изменена: {Old} -> {New}",
+            user.login_name, oldRole, dto.Role);
 
         return NoContent();
     }
@@ -64,18 +70,24 @@ public class UsersController : ControllerBase
     // PUT: /api/users/5/active — включение/отключение (нельзя отключить себя)
     [HttpPut("{id:int}/active")]
     [Authorize(Roles = "Администратор")]
-    public async Task<IActionResult> UpdateActive(int id, [FromBody] UpdateUserActiveDto dto)
+    public async Task<IActionResult> UpdateActive(int id, [FromBody] UpdateUserActiveDto dto, CancellationToken ct)
     {
-        var currentId = User.FindFirst("UserId")?.Value;
-        if (currentId is not null && int.Parse(currentId) == id && !dto.IsActive)
+        if (CurrentUserId() == id && !dto.IsActive)
             return BadRequest(new { message = "Нельзя отключить собственную учётную запись" });
 
-        var user = await _db.SystemUsers.FindAsync(id);
-        if (user is null) return NotFound();
+        var user = await _db.SystemUsers.FindAsync([id], ct);
+        if (user is null) return NotFound(new { message = "Пользователь не найден" });
 
         user.is_active = dto.IsActive;
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Пользователь {Login} {State}", user.login_name,
+            dto.IsActive ? "включён" : "отключён");
 
         return NoContent();
     }
+
+    /// <summary>id текущего пользователя; 0 — если claim отсутствует или неверен.</summary>
+    private int CurrentUserId() =>
+        int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
 }

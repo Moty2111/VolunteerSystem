@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +24,7 @@ export default function Layout() {
     const [searchOpen, setSearchOpen] = useState(false);
     const [eventCount, setEventCount] = useState<number | null>(null);
     const [unread, setUnread] = useState(notifStore.get());
+    const mainRef = useRef<HTMLElement>(null);
 
     const isAdmin = user?.role === 'Администратор';
     const isManager = user?.role === 'Менеджер';
@@ -52,12 +53,22 @@ export default function Layout() {
 
     useEffect(() => { setMobileOpen(false); }, [location.pathname]);
 
+    /* Новая страница — всегда сверху, и курсор сразу в содержимом (не теряется
+       для клавиатуры и скринридера), но фокус не мешает мыши. */
+    useEffect(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        const el = mainRef.current;
+        if (!el) return;
+        el.focus({ preventScroll: true });
+    }, [location.pathname]);
+
     useEffect(() => notifStore.sub(setUnread), []);
 
     const handleLogout = () => { logout(); navigate('/login'); };
 
     return (
         <div className= "app-shell" >
+        <a className="skip-link" href="#main">К содержимому</a>
         <aside className={ `sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}` }>
             <div className="sidebar-logo" >
                 <Logo size={ collapsed ? 36 : 42 } markOnly = { collapsed } />
@@ -249,7 +260,7 @@ onClick = { handleLogout }
 } />
       )}
 
-<main className="main" >
+<main className="main" ref = { mainRef } tabIndex = { -1 } id = "main" >
     <Topbar
           onOpenSearch={ () => setSearchOpen(true) }
 onToggleSidebar = {() => setMobileOpen(o => !o)}

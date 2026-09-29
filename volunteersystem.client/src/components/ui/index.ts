@@ -7,3 +7,4 @@ export { default as Avatar, AvatarGroup } from './Avatar';
 export { default as ProgressBar } from './ProgressBar';
 export { default as Skeleton } from './Skeleton';
 export { default as EmptyState } from './EmptyState';
+export { default as ViewToggle, useViewMode, type ViewMode } from './ViewToggle';

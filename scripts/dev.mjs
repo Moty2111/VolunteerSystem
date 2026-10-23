@@ -88,6 +88,30 @@ async function waitForPort(port, name, timeoutMs = 120_000) {
     return false;
 }
 
+/* ---------- готовность API (не просто порт, а живой ответ) ---------- */
+async function isApiHealthy() {
+    try {
+        const res = await fetch(`http://localhost:${API_PORT}/api/health`, {
+            signal: AbortSignal.timeout(1500)
+        });
+        return res.ok;
+    } catch {
+        return false;
+    }
+}
+
+async function waitForApi(timeoutMs = 120_000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        if (await isApiHealthy()) {
+            return true;
+        }
+        if (children.some(c => c.exited)) return false;
+        await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
+}
+
 /* ---------- запуск дочерних процессов ---------- */
 const children = [];
 let shuttingDown = false;
@@ -168,27 +192,36 @@ process.stdout.write(
     `${label('•', DIM)} клиент: ${clientDir}\n\n`
 );
 
-/* Повторный запуск не должен падать: если порт уже занят, просто сообщаем
-   об этом и не плодим вторые экземпляры процессов. */
-const apiBusy = await canConnect(API_PORT, '127.0.0.1') || await canConnect(API_PORT, '::1');
+/* Повторный запуск не должен падать: если сервер уже отвечает — не плодим
+   второй экземпляр. Проверяем именно健康-эндпоинт, а не «порт занят»:
+   занятый порт может принадлежать чему-то другому. */
+const apiAlreadyRunning = await isApiHealthy();
 
-if (apiBusy) {
+if (apiAlreadyRunning) {
     process.stdout.write(
-        `${label('•', YELLOW)} Порт ${API_PORT} уже занят — считаем, что сервер уже запущен.\n` +
-        `${label('•', DIM)} Если это не так, закройте лишний процесс и запустите снова.\n\n`
+        `${label('•', YELLOW)} API уже отвечает на ${API_PORT} — второй сервер не запускаем.\n\n`
     );
 } else {
+    const portTaken = await canConnect(API_PORT, '127.0.0.1') || await canConnect(API_PORT, '::1');
+    if (portTaken) {
+        process.stdout.write(
+            `${label('!', YELLOW)} Порт ${API_PORT} занят, но API не отвечает — возможно, сервер ещё\n` +
+            `        запускается или занят другой программой. Пробуем поднять свой…\n\n`
+        );
+    }
     start('API', CYAN, 'dotnet', ['run', '--project', serverDir, '--launch-profile', 'http'], root);
 }
 
 start('WEB', MAGENTA, npmCmd, ['run', 'dev:web'], clientDir);
 
-const apiReady = await waitForPort(API_PORT, 'API');
+const bootStarted = Date.now();
+const apiReady = apiAlreadyRunning || await waitForApi();
 const webReady = await waitForPort(WEB_PORT, 'Фронтенд');
+const bootSeconds = ((Date.now() - bootStarted) / 1000).toFixed(1);
 
 if (apiReady && webReady) {
     process.stdout.write(
-        `\n${paint(GREEN, '  Проект запущен')}\n` +
+        `\n${paint(GREEN, '  Проект запущен')}${paint(DIM, `  (API поднялся за ${bootSeconds} с)`)}\n` +
         `  ${paint(DIM, 'Приложение:')} https://localhost:${WEB_PORT}\n` +
         `  ${paint(DIM, 'API:')}          http://localhost:${API_PORT}\n` +
         `  ${paint(DIM, 'Swagger:')}      http://localhost:${API_PORT}/swagger\n` +
@@ -202,7 +235,7 @@ if (apiReady && webReady) {
     );
 } else {
     process.stdout.write(
-        `${label('!', YELLOW)} API не поднялся на порту ${API_PORT}. ` +
-        `Проверьте вывод команды [API] выше.\n`
+        `${label('!', YELLOW)} API не отвечает на ${API_PORT}. ` +
+        `Проверьте вывод команды [API] выше (чаще всего — SQL Server не запущен).\n`
     );
 }

@@ -18,4 +18,11 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Конфиги сборки работают в Node, а не в браузере
+    files: ['vite.config.js', 'vite.config.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])

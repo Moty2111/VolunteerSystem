@@ -70,6 +70,7 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
   const [createOpen, setCreateOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unread, setUnread] = useState(() => notifStore.unread);
   const notifRef = useRef<HTMLDivElement>(null);
   const createRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
@@ -78,14 +79,26 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
   const isHome = location.pathname === '/dashboard';
 
   useEffect(() => {
-    (async () => {
+    let alive = true;
+
+    const load = async () => {
       try {
         const list = await notificationsApi.getAll();
+        if (!alive) return;
         setNotifications(list);
-        notifStore.set(list.length);
+        /* лента задаётся в сторе — он сам считает непрочитанные */
+        notifStore.setFeed(list.map(n => n.id));
       } catch { /* ignore */ }
-    })();
+    };
+
+    load();
+    /* обновляем ленту раз в минуту: новые назначения появляются без перезагрузки */
+    const timer = window.setInterval(load, 60_000);
+    return () => { alive = false; window.clearInterval(timer); };
   }, []);
+
+  /* реакция на прочтение (кнопка «Прочитать все» на странице уведомлений) */
+  useEffect(() => notifStore.sub(setUnread), []);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -211,7 +224,7 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
         >
 
           <Bell size={16} />
-          {notifications.length > 0 && <span className="dot" />}
+          {unread > 0 && <span className="dot" />}
         </button>
         <AnimatePresence>
           {notifOpen && (
@@ -241,9 +254,21 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                 alignItems: 'center'
               }}>
                 <strong style={{ fontSize: 14 }}>Уведомления</strong>
-                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                  {notifications.length} новых
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    {unread > 0 ? `${unread} новых` : 'всё прочитано'}
+                  </span>
+                  {unread > 0 && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: '3px 10px', fontSize: 11 }}
+                      onClick={() => notifStore.markAllRead()}
+                      title="Отметить все уведомления как прочитанные"
+                    >
+                      <Check size={12} /> Прочитать все
+                    </button>
+                  )}
+                </div>
               </div>
               <div style={{ maxHeight: 400, overflowY: 'auto' }}>
                 {notifications.length === 0 && (
@@ -251,19 +276,26 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                     Уведомлений нет
                   </div>
                 )}
-                {notifications.map(n => (
+                {notifications.map(n => {
+                  const isRead = notifStore.isRead(n.id);
+                  return (
                   <div
                     key={n.id}
+                    onClick={() => notifStore.markRead(n.id)}
                     style={{
                       padding: '12px 16px',
                       borderBottom: '1px solid var(--border)',
                       display: 'flex',
                       gap: 12,
                       alignItems: 'flex-start',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      background: isRead ? 'transparent' : 'color-mix(in srgb, var(--primary) 6%, transparent)',
+                      opacity: isRead ? 0.62 : 1,
+                      transition: 'opacity .18s ease, background .18s ease'
                     }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    onMouseLeave={e => (e.currentTarget.style.background =
+                      isRead ? 'transparent' : 'color-mix(in srgb, var(--primary) 6%, transparent)')}
                   >
                     <div style={{
                       width: 28,
@@ -292,8 +324,22 @@ export default function Topbar({ onOpenSearch, onToggleSidebar, sidebarCollapsed
                         })}
                       </div>
                     </div>
+                    {!isRead && (
+                      <span
+                        title="Новое уведомление"
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          background: 'var(--primary)',
+                          marginTop: 6,
+                          flexShrink: 0
+                        }}
+                      />
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <div style={{ padding: 10, textAlign: 'center' }}>
                 <button

@@ -13,7 +13,7 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
-const LIFE = 4500;
+const LIFE = 5500;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
     const [items, setItems] = useState<ToastItem[]>([]);
@@ -43,10 +43,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                             key={t.id}
                             layout
                             className={`toast toast-${t.type}`}
-                            initial={{ opacity: 0, y: 14, scale: .96 }}
+                            initial={{ opacity: 0, y: 10, scale: .98 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, x: 40, scale: .96 }}
-                            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                            exit={{ opacity: 0, x: 24, scale: .98 }}
+                            /* мягкая пружина: на Windows быстрый отскок читался как мигание */
+                            transition={{ type: 'spring', stiffness: 220, damping: 26, mass: .9 }}
                             role={t.type === 'error' ? 'alert' : 'status'}
                             aria-live={t.type === 'error' ? 'assertive' : 'polite'}
                         >

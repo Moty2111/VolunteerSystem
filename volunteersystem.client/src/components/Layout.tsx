@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,14 @@ import {
     CalendarDays, History, UserCog, Target
 } from 'lucide-react';
 
+function SidebarSection({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
+    return (
+        <div className={`sidebar-section${collapsed ? ' is-collapsed' : ''}`}>
+            {collapsed ? <span className="sidebar-section-rule" aria-hidden="true" /> : children}
+        </div>
+    );
+}
+
 export default function Layout() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
@@ -23,7 +31,7 @@ export default function Layout() {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [searchOpen, setSearchOpen] = useState(false);
     const [eventCount, setEventCount] = useState<number | null>(null);
-    const [unread, setUnread] = useState(notifStore.get());
+    const [unread, setUnread] = useState(() => notifStore.unread);
     const mainRef = useRef<HTMLElement>(null);
 
     const isAdmin = user?.role === 'Администратор';
@@ -42,9 +50,10 @@ export default function Layout() {
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            const isK = e.code === 'KeyK' || e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'л';
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && isK) {
                 e.preventDefault();
-                setSearchOpen(true);
+                if (!e.repeat) setSearchOpen(true);
             }
         };
         window.addEventListener('keydown', onKey);
@@ -94,6 +103,7 @@ aria-label = "Свернуть меню"
     onClick = {() => setCollapsed(false)}
 data-tip = "Развернуть меню"
     aria-label = "Развернуть меню"
+    title = "Развернуть меню"
     >
     <ChevronsRight size={ 16 } />
         </button>
@@ -102,7 +112,7 @@ data-tip = "Развернуть меню"
 </div>
 
     < nav className = "sidebar-nav" >
-        <div className="sidebar-section" > { collapsed? '•': 'Главное' } </div>
+        <SidebarSection collapsed={collapsed}>Главное</SidebarSection>
             < NavLink to = "/dashboard" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <LayoutDashboard />
                 < span className = "hide-collapsed" > Дашборд </span>
@@ -116,7 +126,7 @@ data-tip = "Развернуть меню"
 {
     (isAdmin || isManager) && (
         <>
-        <div className="sidebar-section" > { collapsed? '•': 'Управление' } </div>
+        <SidebarSection collapsed={collapsed}>Управление</SidebarSection>
 
             < NavLink to = "/volunteers" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`
 }>
@@ -161,7 +171,7 @@ data-tip = "Развернуть меню"
 {
     isAdmin && (
         <>
-        <div className="sidebar-section" > { collapsed? '•': 'Администрирование' } </div>
+        <SidebarSection collapsed={collapsed}>Администрирование</SidebarSection>
 
             < NavLink to = "/users" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
                 <UserCog />
@@ -180,7 +190,7 @@ data-tip = "Развернуть меню"
 {
     isVolunteer && (
         <>
-        <div className="sidebar-section" > { collapsed? '•': 'Мой кабинет' } </div>
+        <SidebarSection collapsed={collapsed}>Мой кабинет</SidebarSection>
 
             < NavLink to = "/events" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`
 }>
@@ -210,7 +220,7 @@ data-tip = "Развернуть меню"
             </>
           )}
 
-<div className="sidebar-section" > { collapsed? '•': 'Аккаунт' } </div>
+<SidebarSection collapsed={collapsed}>Аккаунт</SidebarSection>
     < NavLink to = "/notifications" className = {({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
         <Bell />
         < span className = "hide-collapsed" > Уведомления </span>

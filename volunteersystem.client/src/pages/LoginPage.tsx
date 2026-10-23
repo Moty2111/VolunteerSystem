@@ -70,7 +70,7 @@ export default function LoginPage() {
 
   return (
     <div className="auth-split">
-      <div className="auth-brand">
+      <div className="auth-brand auth-brand-login">
         <div className="auth-brand-inner">
           <div className="auth-brand-logo">
             <div className="mark">
@@ -91,21 +91,6 @@ export default function LoginPage() {
             Единая платформа для координации волонтёров, мероприятий и партнёрских программ.
             Прозрачная отчётность, живые люди, реальная польза.
           </p>
-
-          <div className="auth-brand-stats">
-            <div className="auth-brand-stat">
-              <div className="num">124</div>
-              <div className="lbl">волонтёра</div>
-            </div>
-            <div className="auth-brand-stat">
-              <div className="num">486 ч</div>
-              <div className="lbl">отработано</div>
-            </div>
-            <div className="auth-brand-stat">
-              <div className="num">18</div>
-              <div className="lbl">мероприятий</div>
-            </div>
-          </div>
         </div>
       </div>
 

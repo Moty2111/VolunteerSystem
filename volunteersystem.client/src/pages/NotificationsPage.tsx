@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { notificationsApi, type Notification } from '../api/notifications';
 import { useToast } from '../components/Toast';
+import { notifStore } from '../utils/notifStore';
 import { EmptyState, Skeleton, Badge } from '../components/ui';
 import { IllActivity } from '../components/illustrations';
 import {
@@ -54,11 +55,14 @@ export default function NotificationsPage() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | Notification['kind']>('all');
     const [settings, setSettings] = useState<Settings>(loadSettings);
+    const [unread, setUnread] = useState(() => notifStore.unread);
 
     useEffect(() => {
         (async () => {
             try {
-                setItems(await notificationsApi.getAll());
+                const list = await notificationsApi.getAll();
+                setItems(list);
+                notifStore.setFeed(list.map(n => n.id));
             } catch {
                 toast.error('Не удалось загрузить уведомления');
             } finally {
@@ -66,6 +70,14 @@ export default function NotificationsPage() {
             }
         })();
     }, []);
+
+    /* живая реакция на отметки о прочтении */
+    useEffect(() => notifStore.sub(setUnread), []);
+
+    const markAllRead = () => {
+        notifStore.markAllRead();
+        toast.success('Все уведомления отмечены как прочитанные');
+    };
 
     const filtered = useMemo(
         () => (filter === 'all' ? items : items.filter(n => n.kind === filter)),
@@ -141,6 +153,19 @@ export default function NotificationsPage() {
                                 </button>
                             ))}
                         </div>
+                        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span className="sort-hint">
+                                {unread > 0 ? `непрочитанных: ${unread}` : 'всё прочитано'}
+                            </span>
+                            <button
+                                className="btn btn-secondary btn-sm"
+                                onClick={markAllRead}
+                                disabled={unread === 0}
+                                title="Отметить все уведомления как прочитанные"
+                            >
+                                <Check size={14} /> Прочитать все
+                            </button>
+                        </div>
                     </div>
 
                     {loading ? (
@@ -161,13 +186,24 @@ export default function NotificationsPage() {
                                     const time = new Date(n.at).toLocaleString('ru-RU', {
                                         day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit'
                                     });
+                                    const isRead = notifStore.isRead(n.id);
                                     return (
                                         <motion.div
                                             key={n.id + '-' + i}
-                                            className="notif-item"
+                                            className={`notif-item${isRead ? ' is-read' : ''}`}
                                             initial={{ opacity: 0, y: 8 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                                            onClick={() => notifStore.markRead(n.id)}
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    notifStore.markRead(n.id);
+                                                }
+                                            }}
+                                            title="Отметить как прочитанное"
                                         >
                                             <div
                                                 className="notif-icon"
@@ -186,6 +222,7 @@ export default function NotificationsPage() {
                                                 <div className="notif-text">{n.text}</div>
                                                 <div className="notif-time">{time}</div>
                                             </div>
+                                            {!isRead && <span className="notif-unread-dot" aria-label="Новое" />}
                                         </motion.div>
                                     );
                                 })}

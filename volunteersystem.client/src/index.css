@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    VolunteerSystem — «Candy Fire» дизайн-система
    Тёмная тема по умолчанию + светлая. Все токены — здесь.
    ============================================================ */
@@ -273,26 +273,66 @@ button {
 }
 
     .sidebar.collapsed {
-        width: 78px;
+        width: 84px;
     }
 
         .sidebar.collapsed .hide-collapsed {
             display: none;
         }
 
-        .sidebar.collapsed .sidebar-link {
-            justify-content: center;
-            padding: 12px 0;
+        .sidebar.collapsed .sidebar-nav {
+            padding: 10px 12px;
         }
 
+        .sidebar.collapsed .sidebar-link {
+            width: 48px;
+            height: 44px;
+            margin: 0 auto 4px;
+            padding: 0;
+            justify-content: center;
+            border-radius: 14px;
+        }
+
+            .sidebar.collapsed .sidebar-link svg {
+                width: 19px;
+                height: 19px;
+            }
+
+            .sidebar.collapsed .sidebar-link:hover {
+                transform: none;
+            }
+
+            .sidebar.collapsed .sidebar-link.active::before {
+                left: -12px;
+                top: 25%;
+                bottom: 25%;
+                width: 3px;
+            }
+
         .sidebar.collapsed .sidebar-section {
-            text-align: center;
-            padding: 14px 0 6px;
-            font-size: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 0 8px;
+            font-size: 0;
+        }
+
+.sidebar-section-rule {
+    display: block;
+    width: 30px;
+    height: 1px;
+    border-radius: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-2), transparent);
+}
+
+        .sidebar.collapsed .sidebar-user {
+            padding: 12px 10px 16px;
         }
 
         .sidebar.collapsed .sidebar-user-info {
             justify-content: center;
+            padding: 6px;
+            margin-bottom: 8px;
         }
 
 .sidebar-logo {
@@ -307,8 +347,11 @@ button {
 }
 
 .sidebar.collapsed .sidebar-logo {
+    flex-direction: column;
     justify-content: center;
-    padding: 18px 10px;
+    gap: 6px;
+    min-height: 0;
+    padding: 14px 8px 8px;
 }
 
 .logo-mark {
@@ -361,7 +404,7 @@ button {
 .logo-spark {
     transform-box: fill-box;
     transform-origin: center;
-    animation: sparkTwinkle 2.2s ease-in-out infinite;
+    animation: sparkTwinkle 3.6s ease-in-out infinite;
 }
 
 .spark-b { animation-delay: .7s; }
@@ -398,7 +441,7 @@ button {
 
 @keyframes sparkTwinkle {
     0%, 100% { opacity: .35; transform: scale(.7); }
-    50% { opacity: 1; transform: scale(1.25); }
+    50% { opacity: 1; transform: scale(1.14); }
 }
 
 @keyframes leafSway {
@@ -439,11 +482,14 @@ button {
 .sidebar-collapse-row {
     display: flex;
     justify-content: center;
-    padding: 6px 0 4px;
+    padding: 2px 0 0;
     flex-shrink: 0;
 }
 
     .sidebar-collapse-row .icon-btn {
+        width: 32px;
+        height: 26px;
+        border-radius: 9px;
         background: color-mix(in srgb, var(--primary) 16%, var(--surface));
         border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
         color: var(--primary-2);
@@ -569,7 +615,7 @@ button {
     background: var(--gradient);
     color: #fff;
     box-shadow: 0 4px 12px var(--primary-glow);
-    animation: pulseDot 1.8s ease-in-out infinite;
+    animation: pulseDot 3.2s ease-in-out infinite;
 }
 
 .sidebar-user {
@@ -652,9 +698,9 @@ button {
     position: sticky;
     top: 0;
     z-index: 30;
-    background: color-mix(in srgb, var(--bg) 78%, transparent);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
     padding: 12px 32px;
     display: flex;
@@ -736,12 +782,12 @@ button {
         border-radius: 50%;
         background: var(--gradient-warm);
         box-shadow: 0 0 0 2px var(--bg-2);
-        animation: pulseDot 1.8s ease-in-out infinite;
+        animation: pulseDot 3.2s ease-in-out infinite;
     }
 
 @keyframes pulseDot {
     0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.25); }
+    50% { transform: scale(1.12); }
 }
 
 .main-content {
@@ -1538,6 +1584,9 @@ tbody tr.row-clickable {
     box-shadow: var(--shadow-lg), 0 0 60px color-mix(in srgb, var(--primary) 12%, transparent);
     animation: slideUp .24s cubic-bezier(0.2, 0.9, 0.3, 1);
     position: relative;
+    /* свой слой: размытие фона не пересчитывается каждый кадр анимации */
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
     .modal::before {
@@ -1649,8 +1698,10 @@ tbody tr.row-clickable {
 
 .toast {
     position: relative;
-    background: color-mix(in srgb, var(--surface) 92%, transparent);
-    backdrop-filter: blur(12px);
+    /* Без backdrop-filter: размытие под анимируемым элементом на Windows 11
+       пересчитывалось каждый кадр и тост «мигал». Плотный фон даёт тот же
+       стеклянный вид, но без мерцания. */
+    background: color-mix(in srgb, var(--surface) 98%, transparent);
     border: 1px solid var(--border-2);
     border-radius: var(--r-md);
     padding: 12px 14px 14px;
@@ -1660,6 +1711,8 @@ tbody tr.row-clickable {
     box-shadow: var(--shadow-md);
     overflow: hidden;
     font-size: 14px;
+    will-change: transform, opacity;
+    transform: translateZ(0);
 }
 
 .toast-text {
@@ -1770,7 +1823,7 @@ tbody tr.row-clickable {
 .skeleton {
     background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
     background-size: 200% 100%;
-    animation: shimmer 1.4s ease-in-out infinite;
+    animation: shimmer 1.8s ease-in-out infinite;
     border-radius: var(--r-sm);
     display: block;
 }
@@ -2066,7 +2119,7 @@ tbody tr.row-clickable {
         background: linear-gradient(135deg, #ffe27a, var(--gold));
         color: #4a3508;
         box-shadow: 0 4px 14px rgba(255, 212, 71, 0.45);
-        animation: medalGlow 2.4s ease-in-out infinite;
+        animation: medalGlow 3.4s ease-in-out infinite;
     }
 
     .leader-place.silver {
@@ -2950,6 +3003,14 @@ tbody tr.row-clickable {
     position: relative;
     z-index: 1;
 }
+
+.auth-brand-login {
+    justify-content: center;
+}
+
+    .auth-brand-login .auth-brand-sub {
+        margin-bottom: 0;
+    }
 
 .auth-brand-logo {
     display: inline-flex;
@@ -4018,12 +4079,12 @@ tbody tr.row-clickable {
         background: color-mix(in srgb, var(--warning) 16%, transparent);
         color: var(--warning);
         border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
-        animation: waitPulse 1.8s ease-in-out infinite;
+        animation: waitPulse 3.2s ease-in-out infinite;
     }
 
 @keyframes waitPulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 40%, transparent); }
-    50% { box-shadow: 0 0 0 5px transparent; }
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 34%, transparent); }
+    50% { box-shadow: 0 0 0 4px transparent; }
 }
 
 .assign-actions {
@@ -4060,6 +4121,31 @@ tbody tr.row-clickable {
     border-bottom: 1px solid var(--border);
     transition: background .14s ease;
     border-radius: 10px;
+}
+
+/* непрочитанное уведомление — мягкая подсветка и точка справа */
+.notif-item:not(.is-read) {
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.notif-item:hover {
+    background: var(--surface-2);
+    cursor: pointer;
+}
+
+/* прочитанное — приглушено */
+.notif-item.is-read {
+    opacity: .6;
+}
+
+.notif-unread-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+    margin-top: 7px;
+    flex-shrink: 0;
 }
 
     .notif-item:last-child {
@@ -4762,9 +4848,9 @@ tbody tr.row-clickable {
     right: 0;
     bottom: 0;
     z-index: 40;
-    background: color-mix(in srgb, var(--bg) 82%, transparent);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     border-top: 1px solid var(--border);
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
     justify-content: space-around;

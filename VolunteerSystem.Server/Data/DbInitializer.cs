@@ -64,7 +64,56 @@ public static class DbInitializer
         {
             logger.LogInformation("Тестовые данные в БД {Db} уже присутствуют", targetDb);
         }
+
+        await ApplyDemoDataUpgradeAsync(dataConn, logger);
     }
+
+    private static async Task ApplyDemoDataUpgradeAsync(string connString, ILogger logger)
+    {
+        await using var conn = new SqlConnection(connString);
+        await conn.OpenAsync();
+
+        await using (var create = new SqlCommand(
+            "IF OBJECT_ID(N'dbo.SeedHistory', N'U') IS NULL " +
+            "CREATE TABLE SeedHistory (" +
+            "  version INT PRIMARY KEY," +
+            "  applied_at DATETIME NOT NULL DEFAULT GETDATE()" +
+            ");", conn))
+        {
+            await create.ExecuteNonQueryAsync();
+        }
+
+        int currentVersion;
+        await using (var check = new SqlCommand(
+            "SELECT ISNULL(MAX(version), 0) FROM SeedHistory", conn))
+        {
+            currentVersion = Convert.ToInt32(await check.ExecuteScalarAsync());
+        }
+
+        if (currentVersion >= CurrentDemoDataVersion)
+        {
+            logger.LogInformation("Демо-данные актуальны (версия {Version})", currentVersion);
+            return;
+        }
+
+        logger.LogInformation(
+            "Обновляем демо-данные: версия {From} → {To}…",
+            currentVersion, CurrentDemoDataVersion);
+
+        await RunBatchesAsync(connString, DemoUpgradeScript, logger);
+
+        await using (var mark = new SqlCommand(
+            "IF NOT EXISTS (SELECT 1 FROM SeedHistory WHERE version = @version) " +
+            "INSERT INTO SeedHistory (version) VALUES (@version)", conn))
+        {
+            mark.Parameters.AddWithValue("@version", CurrentDemoDataVersion);
+            await mark.ExecuteNonQueryAsync();
+        }
+
+        logger.LogInformation("Демо-данные обновлены до версии {Version}", CurrentDemoDataVersion);
+    }
+
+    private const int CurrentDemoDataVersion = 2;
 
     /// <summary>БД считается незаполненной, если в ней нет ни ролей, ни пользователей.</summary>
     private static async Task<bool> IsEmptyAsync(string connString, ILogger logger)
@@ -630,6 +679,390 @@ public static class DbInitializer
             (3, 2, 100000),
             (4, 3, 40000),
             (5, 3, 50000);
+        GO
+        """;
+
+    private const string DemoUpgradeScript = """
+        SET NOCOUNT ON;
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM SystemUser WHERE login_name = N'admin2')
+            INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+            VALUES (NULL, N'admin2', N'admin2123', N'Администратор', 1, DATEADD(DAY, -60, GETDATE()));
+
+        IF NOT EXISTS (SELECT 1 FROM SystemUser WHERE login_name = N'admin3')
+            INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+            VALUES (NULL, N'admin3', N'admin3123', N'Администратор', 1, DATEADD(DAY, -120, GETDATE()));
+
+        IF NOT EXISTS (SELECT 1 FROM SystemUser WHERE login_name = N'manager2')
+            INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+            VALUES (NULL, N'manager2', N'manager2123', N'Менеджер', 1, DATEADD(DAY, -90, GETDATE()));
+
+        IF NOT EXISTS (SELECT 1 FROM SystemUser WHERE login_name = N'manager3')
+            INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+            VALUES (NULL, N'manager3', N'manager3123', N'Менеджер', 1, DATEADD(DAY, -45, GETDATE()));
+
+        IF NOT EXISTS (SELECT 1 FROM SystemUser WHERE login_name = N'manager4')
+            INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+            VALUES (NULL, N'manager4', N'manager4123', N'Менеджер', 1, DATEADD(DAY, -20, GETDATE()));
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'nikitin@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Никитин Артём Владимирович', '2002-04-12', N'+79001234567', N'nikitin@mail.ru',
+                N'Москва', DATEADD(YEAR, 2, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'volkova@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Волкова Ольга Дмитриевна', '1997-08-24', N'+79002345678', N'volkova@mail.ru',
+                N'Санкт-Петербург', DATEADD(YEAR, 1, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'lebedev@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Лебедев Максим Игоревич', '2004-01-17', N'+79003456789', N'lebedev@mail.ru',
+                N'Москва', DATEADD(MONTH, 8, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'zakharova@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Захарова София Андреевна', '2000-12-05', N'+79004567890', N'zakharova@mail.ru',
+                N'Казань', DATEADD(YEAR, 1, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'egorov@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Егоров Никита Сергеевич', '1995-06-30', N'+79005678901', N'egorov@mail.ru',
+                N'Екатеринбург', DATEADD(YEAR, 3, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'belova@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Белова Виктория Павловна', '2003-03-08', N'+79006789012', N'belova@mail.ru',
+                N'Новосибирск', DATEADD(YEAR, 1, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'kozlov@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Козлов Андрей Михайлович', '1999-10-11', N'+79007890123', N'kozlov@mail.ru',
+                N'Москва', DATEADD(YEAR, 2, GETDATE()), 1);
+
+        IF NOT EXISTS (SELECT 1 FROM Volunteer WHERE email = N'fedorova@mail.ru')
+            INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+            VALUES (N'Фёдорова Алина Романовна', '2001-05-27', N'+79008901234', N'fedorova@mail.ru',
+                N'Санкт-Петербург', DATEADD(MONTH, 10, GETDATE()), 1);
+        GO
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'nikitin', N'nikitin123', N'Волонтёр', 1, DATEADD(DAY, -18, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'nikitin@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'nikitin');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'volkova', N'volkova123', N'Волонтёр', 1, DATEADD(DAY, -17, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'volkova@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'volkova');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'lebedev', N'lebedev123', N'Волонтёр', 1, DATEADD(DAY, -15, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'lebedev@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'lebedev');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'zakharova', N'zakharova123', N'Волонтёр', 1, DATEADD(DAY, -14, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'zakharova@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'zakharova');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'egorov', N'egorov123', N'Волонтёр', 1, DATEADD(DAY, -12, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'egorov@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'egorov');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'belova', N'belova123', N'Волонтёр', 1, DATEADD(DAY, -9, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'belova@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'belova');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'kozlov', N'kozlov123', N'Волонтёр', 1, DATEADD(DAY, -6, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'kozlov@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'kozlov');
+
+        INSERT INTO SystemUser (volunteer_id, login_name, password_hash, system_role, is_active, created_at)
+        SELECT v.volunteer_id, N'fedorova', N'fedorova123', N'Волонтёр', 1, DATEADD(DAY, -3, GETDATE())
+        FROM Volunteer v
+        WHERE v.email = N'fedorova@mail.ru'
+          AND NOT EXISTS (SELECT 1 FROM SystemUser u WHERE u.login_name = N'fedorova');
+        GO
+
+        INSERT INTO Volunteer_Skill (volunteer_id, skill_id, year_confirmed)
+        SELECT v.volunteer_id, s.skill_id, x.year_confirmed
+        FROM (VALUES
+            (N'nikitin@mail.ru',   N'Первая помощь',            2024),
+            (N'nikitin@mail.ru',   N'Вождение автомобиля',      2022),
+            (N'volkova@mail.ru',   N'Английский язык',          2023),
+            (N'volkova@mail.ru',   N'Организация мероприятий',  2024),
+            (N'lebedev@mail.ru',   N'Веб-разработка',           2024),
+            (N'lebedev@mail.ru',   N'Работа с детьми',          2023),
+            (N'zakharova@mail.ru', N'Работа с пожилыми людьми', 2023),
+            (N'zakharova@mail.ru', N'Первая помощь',            2024),
+            (N'egorov@mail.ru',    N'Вождение автомобиля',      2021),
+            (N'egorov@mail.ru',    N'Организация мероприятий',  2024),
+            (N'belova@mail.ru',    N'Английский язык',          2023),
+            (N'belova@mail.ru',    N'Работа с детьми',          2024),
+            (N'kozlov@mail.ru',    N'Первая помощь',            2022),
+            (N'kozlov@mail.ru',    N'Организация мероприятий',  2023),
+            (N'fedorova@mail.ru',  N'Немецкий язык',            2022),
+            (N'fedorova@mail.ru',  N'Работа с пожилыми людьми', 2024)
+        ) AS x(email, skill_name, year_confirmed)
+        JOIN Volunteer v ON v.email = x.email
+        JOIN Skill s ON s.skill_name = x.skill_name
+        WHERE NOT EXISTS (
+            SELECT 1 FROM Volunteer_Skill vs
+            WHERE vs.volunteer_id = v.volunteer_id AND vs.skill_id = s.skill_id
+        );
+        GO
+
+        DECLARE @today DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+
+        UPDATE [Event]
+        SET date_start = DATEADD(HOUR, 9, DATEADD(DAY, -21, @today)),
+            date_end   = DATEADD(HOUR, 14, DATEADD(DAY, -21, @today)),
+            status     = N'Завершено'
+        WHERE event_name = N'Субботник в парке';
+
+        UPDATE [Event]
+        SET date_start = DATEADD(HOUR, 10, DATEADD(DAY, 14, @today)),
+            date_end   = DATEADD(HOUR, 18, DATEADD(DAY, 14, @today)),
+            status     = N'Запланировано'
+        WHERE event_name = N'Помощь детскому дому';
+
+        UPDATE [Event]
+        SET date_start = DATEADD(HOUR, 17, DATEADD(DAY, 32, @today)),
+            date_end   = DATEADD(HOUR, 22, DATEADD(DAY, 32, @today)),
+            status     = N'Запланировано'
+        WHERE event_name = N'Благотворительный концерт';
+
+        UPDATE [Event]
+        SET date_start = DATEADD(HOUR, 10, DATEADD(DAY, 2, @today)),
+            date_end   = DATEADD(HOUR, 16, DATEADD(DAY, 2, @today)),
+            status     = N'Запланировано'
+        WHERE event_name = N'Эко-акция «Чистая набережная»';
+
+        UPDATE [Event]
+        SET date_start = DATEADD(HOUR, 11, DATEADD(DAY, 40, @today)),
+            date_end   = DATEADD(HOUR, 19, DATEADD(DAY, 40, @today)),
+            status     = N'Запланировано'
+        WHERE event_name = N'Спортивный фестиваль';
+
+        UPDATE [Event]
+        SET date_start = DATEADD(HOUR, 12, DATEADD(DAY, 21, @today)),
+            date_end   = DATEADD(HOUR, 20, DATEADD(DAY, 21, @today)),
+            status     = N'Отменено'
+        WHERE event_name = N'Книжная ярмарка';
+        GO
+
+        DECLARE @today DATETIME = CAST(CAST(GETDATE() AS DATE) AS DATETIME);
+        DECLARE @past30 DATETIME = DATEADD(DAY, -30, @today);
+        DECLARE @past14 DATETIME = DATEADD(DAY, -14, @today);
+        DECLARE @d4  DATETIME = DATEADD(DAY, 4,  @today);
+        DECLARE @d7  DATETIME = DATEADD(DAY, 7,  @today);
+        DECLARE @d10 DATETIME = DATEADD(DAY, 10, @today);
+        DECLARE @d18 DATETIME = DATEADD(DAY, 18, @today);
+        DECLARE @d25 DATETIME = DATEADD(DAY, 25, @today);
+        DECLARE @d45 DATETIME = DATEADD(DAY, 45, @today);
+        DECLARE @d55 DATETIME = DATEADD(DAY, 55, @today);
+        DECLARE @d65 DATETIME = DATEADD(DAY, 65, @today);
+        DECLARE @d75 DATETIME = DATEADD(DAY, 75, @today);
+        DECLARE @d95 DATETIME = DATEADD(DAY, 95, @today);
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Городской субботник «Чистые улицы»')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Городской субботник «Чистые улицы»',
+                DATEADD(HOUR, 9, @past30), DATEADD(HOUR, 14, @past30),
+                N'Парк «Измайлово», Москва', 2,
+                N'Городская уборка, озеленение и раздельный сбор отходов.',
+                N'Завершено', (SELECT user_id FROM SystemUser WHERE login_name = N'manager1'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Помощь приюту «Верный друг»')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Помощь приюту «Верный друг»',
+                DATEADD(HOUR, 10, @past14), DATEADD(HOUR, 16, @past14),
+                N'Приют «Верный друг», Санкт-Петербург', 4,
+                N'Выгул животных, уборка вольеров и сбор корма для приюта.',
+                N'Завершено', (SELECT user_id FROM SystemUser WHERE login_name = N'manager4'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Осенний марафон добрых дел')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Осенний марафон добрых дел',
+                DATEADD(HOUR, 10, @d4), DATEADD(HOUR, 18, @d4),
+                N'Парк «Сокольники», Москва', 1,
+                N'Помощь семьям, мастер-классы и сбор школьных принадлежностей.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager2'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Эко-десант в Кузьминках')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Эко-десант в Кузьминках',
+                DATEADD(HOUR, 9, @d7), DATEADD(HOUR, 14, @d7),
+                N'Парк «Кузьминки», Москва', 2,
+                N'Уборка лесопарковой зоны, посадка кустарников и эко-квест.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager3'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'День народного единства')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'День народного единства',
+                DATEADD(HOUR, 16, @d10), DATEADD(HOUR, 21, @d10),
+                N'ДК «Заря», Санкт-Петербург', 3,
+                N'Праздничный концерт, встреча гостей и работа фотозоны.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager1'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Донорская акция «Капля жизни»')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Донорская акция «Капля жизни»',
+                DATEADD(HOUR, 8, @d18), DATEADD(HOUR, 15, @d18),
+                N'Центр крови им. О.К. Гаврилова, Москва', 4,
+                N'Сопровождение доноров, работа регистрации и чайной зоны.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager2'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Зимняя ярмарка мастеров')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Зимняя ярмарка мастеров',
+                DATEADD(HOUR, 12, @d25), DATEADD(HOUR, 20, @d25),
+                N'Центр современной культуры «Смена», Казань', 3,
+                N'Ярмарка ручных изделий, помощь мастерам и организация сцены.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager4'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Новогодний спектакль для детей')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Новогодний спектакль для детей',
+                DATEADD(HOUR, 11, @d45), DATEADD(HOUR, 18, @d45),
+                N'Детский дом №5, Москва', 1,
+                N'Новогоднее представление, подарки и игры с детьми.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager3'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Благотворительный забег «Снежинка»')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Благотворительный забег «Снежинка»',
+                DATEADD(HOUR, 9, @d55), DATEADD(HOUR, 14, @d55),
+                N'Стадион «Динамо», Москва', 5,
+                N'Регистрация участников, выдача номеров и поддержка на трассе.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager2'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Рождественские чтения')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Рождественские чтения',
+                DATEADD(HOUR, 10, @d65), DATEADD(HOUR, 17, @d65),
+                N'Центральная библиотека, Санкт-Петербург', 6,
+                N'Литературные мастер-классы и помощь в организации лекций.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager1'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Зимний фестиваль «Свет города»')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Зимний фестиваль «Свет города»',
+                DATEADD(HOUR, 12, @d75), DATEADD(HOUR, 22, @d75),
+                N'Набережная озера Кабан, Казань', 3,
+                N'Световые инсталляции, работа с гостями и сопровождение площадок.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager4'));
+
+        IF NOT EXISTS (SELECT 1 FROM [Event] WHERE event_name = N'Эко-акция «Чистый январь»')
+            INSERT INTO [Event] (event_name, date_start, date_end, location, event_type_id, description, status, coordinator_id)
+            VALUES (N'Эко-акция «Чистый январь»',
+                DATEADD(HOUR, 10, @d95), DATEADD(HOUR, 16, @d95),
+                N'Парк «Кузьминки», Москва', 2,
+                N'Зимняя уборка парка, сортировка отходов и просветительская программа.',
+                N'Запланировано', (SELECT user_id FROM SystemUser WHERE login_name = N'manager3'));
+        GO
+
+        INSERT INTO Assignment (volunteer_id, event_id, role_id, hours_actual, confirmed)
+        SELECT v.volunteer_id, e.event_id, r.role_id, x.hours_actual, x.confirmed
+        FROM (VALUES
+            (N'nikitin@mail.ru',   N'Городской субботник «Чистые улицы»', N'Участник',     CAST(5.00 AS DECIMAL(5,2)), 1),
+            (N'volkova@mail.ru',   N'Городской субботник «Чистые улицы»', N'Помощник',     CAST(5.00 AS DECIMAL(5,2)), 1),
+            (N'lebedev@mail.ru',   N'Городской субботник «Чистые улицы»', N'Участник',     CAST(4.50 AS DECIMAL(5,2)), 1),
+            (N'zakharova@mail.ru', N'Помощь приюту «Верный друг»',        N'Участник',     CAST(6.00 AS DECIMAL(5,2)), 1),
+            (N'egorov@mail.ru',    N'Помощь приюту «Верный друг»',        N'Организатор',  CAST(6.00 AS DECIMAL(5,2)), 1),
+            (N'belova@mail.ru',    N'Помощь приюту «Верный друг»',        N'Помощник',     CAST(5.00 AS DECIMAL(5,2)), 1),
+
+            (N'kozlov@mail.ru',    N'Осенний марафон добрых дел',         N'Координатор',  CAST(NULL AS DECIMAL(5,2)), 1),
+            (N'fedorova@mail.ru',  N'Осенний марафон добрых дел',         N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'nikitin@mail.ru',   N'Осенний марафон добрых дел',         N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+
+            (N'volkova@mail.ru',   N'Эко-десант в Кузьминках',            N'Организатор',  CAST(NULL AS DECIMAL(5,2)), 1),
+            (N'lebedev@mail.ru',   N'Эко-десант в Кузьминках',            N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'zakharova@mail.ru', N'Эко-десант в Кузьминках',            N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+
+            (N'egorov@mail.ru',    N'День народного единства',            N'Участник',     CAST(NULL AS DECIMAL(5,2)), 1),
+            (N'belova@mail.ru',    N'День народного единства',            N'Помощник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'kozlov@mail.ru',    N'День народного единства',            N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+
+            (N'fedorova@mail.ru',  N'Донорская акция «Капля жизни»',      N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'nikitin@mail.ru',   N'Донорская акция «Капля жизни»',      N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'volkova@mail.ru',   N'Донорская акция «Капля жизни»',      N'Помощник',     CAST(NULL AS DECIMAL(5,2)), 1),
+
+            (N'lebedev@mail.ru',   N'Зимняя ярмарка мастеров',            N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'zakharova@mail.ru', N'Зимняя ярмарка мастеров',            N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'egorov@mail.ru',    N'Зимняя ярмарка мастеров',            N'Организатор',  CAST(NULL AS DECIMAL(5,2)), 1),
+
+            (N'belova@mail.ru',    N'Новогодний спектакль для детей',     N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'kozlov@mail.ru',    N'Новогодний спектакль для детей',     N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'fedorova@mail.ru',  N'Новогодний спектакль для детей',     N'Помощник',     CAST(NULL AS DECIMAL(5,2)), 1),
+
+            (N'nikitin@mail.ru',   N'Благотворительный забег «Снежинка»', N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'volkova@mail.ru',   N'Благотворительный забег «Снежинка»', N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'lebedev@mail.ru',   N'Благотворительный забег «Снежинка»', N'Организатор',  CAST(NULL AS DECIMAL(5,2)), 1),
+
+            (N'zakharova@mail.ru', N'Рождественские чтения',              N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'egorov@mail.ru',    N'Рождественские чтения',              N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'belova@mail.ru',    N'Рождественские чтения',              N'Помощник',     CAST(NULL AS DECIMAL(5,2)), 1),
+
+            (N'kozlov@mail.ru',    N'Зимний фестиваль «Свет города»',     N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'fedorova@mail.ru',  N'Зимний фестиваль «Свет города»',     N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'nikitin@mail.ru',   N'Зимний фестиваль «Свет города»',     N'Организатор',  CAST(NULL AS DECIMAL(5,2)), 1),
+
+            (N'volkova@mail.ru',   N'Эко-акция «Чистый январь»',          N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'lebedev@mail.ru',   N'Эко-акция «Чистый январь»',          N'Участник',     CAST(NULL AS DECIMAL(5,2)), 0),
+            (N'zakharova@mail.ru', N'Эко-акция «Чистый январь»',          N'Помощник',     CAST(NULL AS DECIMAL(5,2)), 1)
+        ) AS x(email, event_name, role_name, hours_actual, confirmed)
+        JOIN Volunteer v ON v.email = x.email
+        JOIN [Event] e ON e.event_name = x.event_name
+        JOIN Role r ON r.role_name = x.role_name
+        WHERE NOT EXISTS (
+            SELECT 1 FROM Assignment a
+            WHERE a.volunteer_id = v.volunteer_id
+              AND a.event_id = e.event_id
+              AND a.role_id = r.role_id
+        );
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM Partner WHERE partner_name = N'АО «Тепло сердец»')
+            INSERT INTO Partner (partner_name, inn, contact_person, phone, email, support_amount, contract_number, contract_date)
+            VALUES (N'АО «Тепло сердец»', N'7712345678', N'Мельникова О.С.', N'+74951234567',
+                N'teplo@mail.ru', 120000, N'Т-2026-07', DATEADD(DAY, -45, GETDATE()));
+
+        IF NOT EXISTS (SELECT 1 FROM Partner WHERE partner_name = N'ООО «Северный ветер»')
+            INSERT INTO Partner (partner_name, inn, contact_person, phone, email, support_amount, contract_number, contract_date)
+            VALUES (N'ООО «Северный ветер»', N'7812345670', N'Громов Д.А.', N'+78127654321',
+                N'nord@mail.ru', 80000, N'С-2026-08', DATEADD(DAY, -20, GETDATE()));
+        GO
+
+        INSERT INTO Event_Partner (event_id, partner_id, amount)
+        SELECT e.event_id, p.partner_id, x.amount
+        FROM (VALUES
+            (N'Осенний марафон добрых дел',         N'ООО «Добро»',          CAST(40000 AS DECIMAL(12,2))),
+            (N'Донорская акция «Капля жизни»',      N'Фонд «Помощь»',       CAST(60000 AS DECIMAL(12,2))),
+            (N'Новогодний спектакль для детей',     N'АО «Тепло сердец»',   CAST(80000 AS DECIMAL(12,2))),
+            (N'Благотворительный забег «Снежинка»', N'ООО «Северный ветер»', CAST(50000 AS DECIMAL(12,2))),
+            (N'Зимний фестиваль «Свет города»',     N'ООО «Добро»',          CAST(35000 AS DECIMAL(12,2))),
+            (N'Эко-акция «Чистый январь»',          N'ООО «Северный ветер»', CAST(30000 AS DECIMAL(12,2)))
+        ) AS x(event_name, partner_name, amount)
+        JOIN [Event] e ON e.event_name = x.event_name
+        JOIN Partner p ON p.partner_name = x.partner_name
+        WHERE NOT EXISTS (
+            SELECT 1 FROM Event_Partner ep
+            WHERE ep.event_id = e.event_id AND ep.partner_id = p.partner_id
+        );
         GO
         """;
 }

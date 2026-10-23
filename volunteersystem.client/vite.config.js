@@ -1,4 +1,4 @@
-﻿import { fileURLToPath, URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import net from 'node:net';
 
 import { defineConfig } from 'vite';
@@ -57,6 +57,102 @@ const devPort = parseInt(env.DEV_SERVER_PORT || '61000');
 // ВАЖНО: target — адрес вашего API (HTTP, профиль http)
 const target = 'http://localhost:5084';
 
+/* Прокси для /api делаем плагином: configureServer — это хук плагина,
+   а не опция server (в опциях server он молча игнорируется).
+   Свой middleware, а не встроенный прокси Vite, потому что встроенный
+   отвечал 502 мимо нашего обработчика, а нужен понятный 503 и ожидание
+   подъёма сервера (инициализация БД занимает несколько секунд). */
+function apiProxyPlugin(target) {
+    /* Сервер поднимается ~20 с (схема и данные БД), поэтому окно ожидания
+       большое: страница дожидается сервера вместо ошибки на экране. */
+    const MAX_RETRIES = 30;
+    const RETRY_DELAY = 900;
+
+    return {
+        name: 'vs-api-proxy',
+        configureServer(server) {
+            server.middlewares.use(async (req, res, next) => {
+                if (!req.url || !req.url.startsWith('/api')) return next();
+
+                const targetUrl = target + req.url;
+
+                /* Заголовки берём только строковые: HTTP/2 добавляет псевдозаголовки
+                   (:method, :path), а часть значений приходит не-строкой —
+                   undici (fetch в Node) такие значения не принимает. */
+                const headers = {};
+                for (const [key, value] of Object.entries(req.headers)) {
+                    if (key.startsWith(':')) continue;
+                    if (typeof value === 'string') headers[key] = value;
+                    else if (Array.isArray(value)) headers[key] = value.join(', ');
+                }
+                delete headers.host;
+                delete headers['accept-encoding'];
+                delete headers.connection;
+                /* undici (fetch в Node) не умеет expect: 100-continue —
+                   его присылают некоторые клиенты (.NET), и запрос падает */
+                delete headers.expect;
+
+                let body;
+                if (req.method !== 'GET' && req.method !== 'HEAD') {
+                    const chunks = [];
+                    for await (const chunk of req) chunks.push(chunk);
+                    body = Buffer.concat(chunks);
+                    /* тело теперь известной длины — chunked-кодировку убираем,
+                       иначе сервер ждёт продолжения и запрос зависает */
+                    delete headers['transfer-encoding'];
+                    headers['content-length'] = String(body.length);
+                }
+
+                /* если пользователь ушёл со страницы — запрос отменяем,
+                   иначе Chrome показывает «ERR_CONNECTION_CLOSED» */
+                const controller = new AbortController();
+                req.on('aborted', () => controller.abort());
+                res.on('close', () => { if (!res.writableEnded) controller.abort(); });
+
+                for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                    try {
+                        const upstream = await fetch(targetUrl, {
+                            method: req.method,
+                            headers,
+                            body,
+                            redirect: 'manual',
+                            signal: controller.signal
+                        });
+
+                        const payload = Buffer.from(await upstream.arrayBuffer());
+                        const skip = new Set(['content-encoding', 'transfer-encoding', 'connection', 'content-length']);
+                        upstream.headers.forEach((value, key) => {
+                            if (!skip.has(key.toLowerCase())) res.setHeader(key, value);
+                        });
+                        res.statusCode = upstream.status;
+                        res.end(payload);
+                        return;
+                    } catch (err) {
+                        /* клиент ушёл — дальше пересылать нечего */
+                        if (err?.name === 'AbortError') return;
+
+                        /* сервер ещё поднимается — пробуем ещё раз */
+                        if (attempt < MAX_RETRIES) {
+                            await new Promise(r => setTimeout(r, RETRY_DELAY));
+                            continue;
+                        }
+                        console.error('[proxy] ошибка запроса:', err?.message, err?.cause?.message || '');
+                        res.statusCode = 503;
+                        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                        res.end(JSON.stringify({
+                            status: 503,
+                            title: 'Сервер недоступен',
+                            message: `API не отвечает на ${target}. Сервер не запущен или ещё поднимается (нужно около 20 с). Запустите проект командой «npm run dev» в корне репозитория.`,
+                            detail: err?.message
+                        }));
+                        return;
+                    }
+                }
+            });
+        }
+    };
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(async ({ command }) => {
     /* === 1. Порт уже занят: ничего не запускаем ===
@@ -98,7 +194,7 @@ export default defineConfig(async ({ command }) => {
     }
 
     return {
-        plugins: [plugin()],
+        plugins: [plugin(), apiProxyPlugin(target)],
         build: {
             // Крупные чанки (pdfmake со шрифтами, recharts) вынесены в ленивую
             // загрузку и не попадают в стартовый бандл, поэтому порог поднят.
@@ -110,29 +206,10 @@ export default defineConfig(async ({ command }) => {
             }
         },
         server: {
-            proxy: {
-                // Проксируем все запросы, начинающиеся с /api, на backend
-                '/api': {
-                    target,
-                    changeOrigin: true,
-                    secure: false,
-                    /* Без этого в консоли сыпалось ECONNREFUSED на каждый запрос,
-                       когда сервер не запущен. Теперь клиент получает внятный ответ. */
-                    configure: proxy => {
-                        proxy.on('error', (err, _req, res) => {
-                            if (!res || res.headersSent || res.writableEnded) return;
-                            const body = JSON.stringify({
-                                status: 503,
-                                title: 'Сервер недоступен',
-                                message: `API не отвечает на ${target}. Запустите проект командой «npm run dev» в корне репозитория.`,
-                                detail: err?.message
-                            });
-                            res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
-                            res.end(body);
-                        });
-                    }
-                }
-            },
+            /* По умолчанию Vite слушает только IPv6 (::1) — тогда https://127.0.0.1:61000
+               не открывается вообще. С host: true dev-сервер отвечает и по 127.0.0.1,
+               и по localhost (сертификат содержит оба адреса). */
+            host: true,
             port: devPort,
             // Порт свободен (проверили выше) — молчаливый переезд исключён:
             // при неожиданной коллизии Vite упадёт с понятной ошибкой.
@@ -140,7 +217,7 @@ export default defineConfig(async ({ command }) => {
             https: {
                 key: fs.readFileSync(keyFilePath),
                 cert: fs.readFileSync(certFilePath),
-            }
+            },
         }
     };
 });

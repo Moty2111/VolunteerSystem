@@ -171,13 +171,14 @@ builder.Services.AddResponseCompression(options =>
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>(name: "database", tags: new[] { "ready" });
 
-// Защита от перебора пароля: 10 попыток в минуту с одного IP
+// Защита от перебора пароля: 20 попыток в минуту с одного IP.
+// (10 было слишком тесно для разработки — все запросы идут с 127.0.0.1)
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddFixedWindowLimiter("auth", limiter =>
     {
-        limiter.PermitLimit = 10;
+        limiter.PermitLimit = 20;
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
         limiter.AutoReplenishment = true;

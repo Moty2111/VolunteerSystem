@@ -200,13 +200,26 @@ public class AssignmentsController : ControllerBase
 
     // ============================================================
     // DELETE: /api/assignments/5
+    // Админ/менеджер — любое; волонтёр — только своё и до начала события
     // ============================================================
     [HttpDelete("{id:int}")]
-    [Authorize(Roles = "Администратор,Менеджер")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
-        var a = await _db.Assignments.FirstOrDefaultAsync(x => x.assignment_id == id, ct);
+        var a = await _db.Assignments
+            .Include(x => x._event)
+            .FirstOrDefaultAsync(x => x.assignment_id == id, ct);
         if (a is null) return NotFound(new { message = "Назначение не найдено" });
+
+        var isAdminOrManager = User.IsInRole("Администратор") || User.IsInRole("Менеджер");
+        if (!isAdminOrManager)
+        {
+            var ownVolunteerId = GetOwnVolunteerId();
+            if (ownVolunteerId != a.volunteer_id)
+                return Forbid();
+
+            if (a._event is not null && a._event.date_start <= DateTime.Now)
+                return BadRequest(new { message = "Отказаться можно только до начала мероприятия" });
+        }
 
         _db.Assignments.Remove(a);
         await _db.SaveChangesAsync(ct);
@@ -216,6 +229,11 @@ public class AssignmentsController : ControllerBase
     // ============================================================
     // Helpers
     // ============================================================
+
+    /// <summary>id волонтёра из токена; 0 — если claim отсутствует.</summary>
+    private int GetOwnVolunteerId() =>
+        int.TryParse(User.FindFirst("VolunteerId")?.Value, out var id) ? id : 0;
+
     private static AssignmentDto ToDto(Assignment a) => new()
     {
         AssignmentId = a.assignment_id,

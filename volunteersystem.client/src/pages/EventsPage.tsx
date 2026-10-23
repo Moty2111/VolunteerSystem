@@ -5,7 +5,7 @@ import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
 import { reportsApi } from '../api/reports';
 import { exportCSV, exportExcel } from '../utils/export';
-import type { EventItem, EventCommentItem } from '../types';
+import type { EventItem, EventCommentItem, Assignment } from '../types';
 import { plural } from '../utils/format';
 import { filterEvents } from '../utils/filters';
 import { useAuth } from '../context/AuthContext';
@@ -99,6 +99,7 @@ export default function EventsPage() {
 
     const [items, setItems] = useState<EventItem[]>([]);
     const [myEventIds, setMyEventIds] = useState<number[]>([]);
+    const [myAssignments, setMyAssignments] = useState<Assignment[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('');
     const [typeFilter, setTypeFilter] = useState('');
@@ -137,6 +138,7 @@ export default function EventsPage() {
             if (isVolunteer) {
                 try {
                     const my = await assignmentsApi.my();
+                    setMyAssignments(my);
                     setMyEventIds(my.map(a => a.eventId));
                 } catch { /* ignore */ }
             }
@@ -194,6 +196,20 @@ export default function EventsPage() {
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Не удалось удалить сообщение');
+        }
+    };
+
+    const handleCancelSignUp = async (eventId: number) => {
+        const my = myAssignments.find(a => a.eventId === eventId);
+        if (!my) return;
+        if (!confirm('Отказаться от участия в этом мероприятии?')) return;
+        try {
+            await assignmentsApi.remove(my.assignmentId);
+            toast.success('Вы отказались от участия');
+            await load();
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось отказаться от участия');
         }
     };
 
@@ -541,6 +557,14 @@ footer = {
         <button className="btn btn-primary" onClick = {() => handleSignUp(details.eventId)
 }>
     <Plus size={ 14 } /> Записаться
+        </button>
+                )}
+{
+    isVolunteer && myEventIds.includes(details.eventId) &&
+    details.status !== 'Завершено' && details.status !== 'Отменено' && (
+        <button className="btn btn-danger" onClick = {() => handleCancelSignUp(details.eventId)
+}>
+    <X size={ 14 } /> Отказаться от участия
         </button>
                 )}
 </>

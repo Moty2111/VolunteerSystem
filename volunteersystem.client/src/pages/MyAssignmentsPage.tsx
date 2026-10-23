@@ -3,21 +3,36 @@ import { useNavigate } from 'react-router-dom';
 import { assignmentsApi } from '../api/assignments';
 import type { Assignment } from '../types';
 import { EmptyState, Skeleton } from '../components/ui';
+import { useToast } from '../components/Toast';
 import { IllCalendar } from '../components/illustrations';
 import { IconClock, IconCheckSquare, IconCheck } from '../components/Icons';
+import { X } from 'lucide-react';
 
 export default function MyAssignmentsPage() {
   const [items, setItems] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const toast = useToast();
 
-  useEffect(() => {
-    (async () => {
-      try { setItems(await assignmentsApi.my()); }
-      catch { /* ignore */ }
-      finally { setLoading(false); }
-    })();
-  }, []);
+  const load = async () => {
+    try { setItems(await assignmentsApi.my()); }
+    catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleCancel = async (a: Assignment) => {
+    if (!confirm('Отказаться от участия в этом мероприятии?')) return;
+    try {
+      await assignmentsApi.remove(a.assignmentId);
+      toast.success('Вы отказались от участия');
+      await load();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { message?: string } } };
+      toast.error(err.response?.data?.message || 'Не удалось отказаться');
+    }
+  };
 
   const totalHours = items.filter(a => a.confirmed).reduce((s, a) => s + (a.hoursActual ?? 0), 0);
   const confirmed = items.filter(a => a.confirmed).length;
@@ -79,10 +94,12 @@ export default function MyAssignmentsPage() {
         <div className="table-wrap">
           <table className="sticky-first">
             <thead><tr>
-              <th>Мероприятие</th><th>Дата</th><th>Роль</th><th>Часы</th><th>Статус</th>
+              <th>Мероприятие</th><th>Дата</th><th>Роль</th><th>Часы</th><th>Статус</th><th>Действия</th>
             </tr></thead>
             <tbody>
-              {items.map(a => (
+              {items.map(a => {
+                const isUpcoming = new Date(a.eventDateStart) > new Date();
+                return (
                 <tr key={a.assignmentId}>
                   <td style={{ fontWeight: 600 }}>{a.eventName}</td>
                   <td>{new Date(a.eventDateStart).toLocaleString('ru-RU')}</td>
@@ -93,8 +110,20 @@ export default function MyAssignmentsPage() {
                       ? <span className="badge badge-success"><IconCheck size={12} /> Подтверждено</span>
                       : <span className="badge badge-warning">Ожидает</span>}
                   </td>
+                  <td>
+                    {isUpcoming && (
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleCancel(a)}
+                        title="Отказаться от участия"
+                      >
+                        <X size={13} /> Отказаться
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

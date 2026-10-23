@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import ThemeToggle from '../components/ThemeToggle';
 import AuthLogoScatter from '../components/AuthLogoScatter';
+import AuthBackground from '../components/AuthBackground';
 
 export default function RegisterPage() {
   const [form, setForm] = useState({
@@ -129,6 +130,7 @@ export default function RegisterPage() {
       </div>
 
       <div className="auth-form-side">
+        <AuthBackground />
         <div className="auth-theme-toggle">
           <ThemeToggle />
         </div>

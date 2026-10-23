@@ -102,6 +102,32 @@ export default function ProfilePage() {
         return { hours, events, pending, skills: mySkills.length };
     }, [myAssignments, mySkills]);
 
+    /* тепловая карта активности: подтверждённые события за последние 16 недель */
+    const heatmap = useMemo(() => {
+        const byDay = new Map<string, number>();
+        myAssignments.forEach(a => {
+            if (!a.confirmed) return;
+            const d = new Date(a.eventDateStart);
+            if (Number.isNaN(d.getTime())) return;
+            const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            byDay.set(key, (byDay.get(key) || 0) + 1);
+        });
+
+        const cells: Array<{ date: Date; count: number }> = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        // идём от начала 16-й недели назад
+        const start = new Date(today);
+        start.setDate(start.getDate() - (start.getDay() + 6) % 7 - (16 - 1) * 7);
+        for (let i = 0; i < 16 * 7; i++) {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+            cells.push({ date: d, count: byDay.get(key) || 0 });
+        }
+        return cells;
+    }, [myAssignments]);
+
     const level = getLevel(stats.hours);
 
     /* срок действия JWT из токена (поле exp) */
@@ -513,6 +539,54 @@ export default function ProfilePage() {
                     </div>
                 </div>
             )}
+
+            {/* Тепловая карта активности */}
+            <div className="card" style={{ marginTop: 14 }}>
+                <div className="profile-medbook-head">
+                    <h3 className="section-title" style={{ marginBottom: 0 }}>
+                        <CalendarCheck size={18} className="section-title-icon" />
+                        Активность
+                    </h3>
+                    <span className="field-hint" style={{ margin: 0 }}>
+                        последние 16 недель
+                    </span>
+                </div>
+                <div className="heatmap-wrap">
+                    <div className="heatmap-grid">
+                        {heatmap.map((cell, i) => {
+                            const level = Math.min(cell.count, 4);
+                            const color = level === 0
+                                ? 'var(--surface-2)'
+                                : `color-mix(in srgb, var(--success) ${18 + level * 20}%, var(--surface))`;
+                            return (
+                                <span
+                                    key={i}
+                                    className="heatmap-cell"
+                                    style={{ background: color }}
+                                    title={cell.count > 0
+                                        ? `${cell.date.toLocaleDateString('ru-RU')} — ${cell.count} ${plural(cell.count, ['событие', 'события', 'событий'])}`
+                                        : cell.date.toLocaleDateString('ru-RU')}
+                                />
+                            );
+                        })}
+                    </div>
+                    <div className="heatmap-legend">
+                        <span>меньше</span>
+                        {[0, 1, 2, 3, 4].map(l => (
+                            <span
+                                key={l}
+                                className="heatmap-cell"
+                                style={{
+                                    background: l === 0
+                                        ? 'var(--surface-2)'
+                                        : `color-mix(in srgb, var(--success) ${18 + l * 20}%, var(--surface))`
+                                }}
+                            />
+                        ))}
+                        <span>больше</span>
+                    </div>
+                </div>
+            </div>
 
             {/* Медкнижка */}
             <div className="card profile-medbook">

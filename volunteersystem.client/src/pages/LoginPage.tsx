@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import Logo from '../components/Logo';
 import AuthLogoScatter from '../components/AuthLogoScatter';
+import AuthBackground from '../components/AuthBackground';
 
 
 /* вертикальный узор для боков формы: пунктирная нить с сердечком */
@@ -95,6 +96,7 @@ export default function LoginPage() {
       </div>
 
       <div className="auth-form-side">
+        <AuthBackground />
         <div className="auth-theme-toggle">
           <ThemeToggle />
         </div>

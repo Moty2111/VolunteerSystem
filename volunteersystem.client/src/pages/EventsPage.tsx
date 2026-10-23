@@ -417,6 +417,18 @@ exit = {{ opacity: 0, scale: 0.95 }}
 transition = {{ delay: i * 0.03 }}
 className = "event-card"
 onClick = {() => setDetails(e)}
+onMouseMove = {(ev) => {
+    const el = ev.currentTarget;
+    const r = el.getBoundingClientRect();
+    const px = (ev.clientX - r.left) / r.width - 0.5;
+    const py = (ev.clientY - r.top) / r.height - 0.5;
+    el.style.setProperty('--ry', `${(px * 7).toFixed(2)}deg`);
+    el.style.setProperty('--rx', `${(-py * 7).toFixed(2)}deg`);
+}}
+onMouseLeave = {(ev) => {
+    ev.currentTarget.style.setProperty('--rx', '0deg');
+    ev.currentTarget.style.setProperty('--ry', '0deg');
+}}
                 >
     <div className="event-card-top" >
         <div className={ `event-poster poster-${e.eventTypeId}` } >

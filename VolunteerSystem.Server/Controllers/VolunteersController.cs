@@ -162,6 +162,69 @@ public class VolunteersController : ControllerBase
         return NoContent();
     }
 
+    // GET: /api/volunteers/5/achievements — достижения и бейджи
+    [HttpGet("{id:int}/achievements")]
+    public async Task<ActionResult<AchievementsDto>> GetAchievements(int id, CancellationToken ct)
+    {
+        var isAdminOrManager = User.IsInRole("Администратор") || User.IsInRole("Менеджер");
+        if (!isAdminOrManager && GetOwnVolunteerId() != id)
+            return Forbid();
+
+        var exists = await _db.Volunteers.AnyAsync(v => v.volunteer_id == id, ct);
+        if (!exists) return NotFound(new { message = "Волонтёр не найден" });
+
+        var assignments = await _db.Assignments
+            .AsNoTracking()
+            .Where(a => a.volunteer_id == id && a.confirmed)
+            .Include(a => a._event)
+            .ThenInclude(e => e!.event_type)
+            .ToListAsync(ct);
+
+        var skills = await _db.Volunteer_Skills
+            .AsNoTracking()
+            .Where(vs => vs.volunteer_id == id)
+            .Select(vs => vs.skill.skill_name)
+            .ToListAsync(ct);
+
+        double hours = (double)assignments.Sum(a => a.hours_actual ?? 0);
+        int eventCount = assignments.Select(a => a.event_id).Distinct().Count();
+        var monthEvents = assignments.Count(a => a.assigned_at >= DateTime.Now.AddDays(-30));
+
+        var byType = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in assignments)
+        {
+            var type = a._event?.event_type?.type_name ?? "Прочее";
+            byType[type] = byType.GetValueOrDefault(type) + 1;
+        }
+
+        var badges = new List<BadgeDto>
+        {
+            Make("hours-10", "10 часов", "Отработано 10 часов волонтёрской деятельности",
+                hours >= 10, (int)hours, 10),
+            Make("hours-50", "50 часов", "Отработано 50 часов волонтёрской деятельности",
+                hours >= 50, (int)hours, 50),
+            Make("hours-100", "100 часов", "Отработано 100 часов волонтёрской деятельности",
+                hours >= 100, (int)hours, 100),
+            Make("veteran", "Ветеран", "Участие в 10 мероприятиях (подтверждено)",
+                eventCount >= 10, eventCount, 10),
+            Make("month-active", "Активист месяца", "3 подтверждённых мероприятия за последние 30 дней",
+                monthEvents >= 3, monthEvents, 3),
+        };
+
+        AddTypeBadge(badges, "social", "Социальный волонтёр", "Социальное", byType);
+        AddTypeBadge(badges, "eco", "Экозащитник", "Экологическое", byType);
+        AddTypeBadge(badges, "culture", "Культурный волонтёр", "Культурное", byType);
+        AddTypeBadge(badges, "charity", "Благотворитель", "Благотворительное", byType);
+        AddTypeBadge(badges, "sport", "Спортивный волонтёр", "Спортивное", byType);
+        AddTypeBadge(badges, "education", "Наставник знаний", "Образовательное", byType);
+
+        AddSkillBadge(badges, "medic", "Медик", "Первая помощь", skills);
+        AddSkillBadge(badges, "driver", "Водитель-волонтёр", "Вождение автомобиля", skills);
+        AddSkillBadge(badges, "organizer", "Организатор", "Организация мероприятий", skills);
+
+        return Ok(new AchievementsDto { Badges = badges });
+    }
+
     // === Медкнижка ===
 
     // POST: /api/volunteers/5/medbook — загрузка скана (волонтёр сам или админ/менеджер)
@@ -275,6 +338,50 @@ public class VolunteersController : ControllerBase
 
     private int? GetUserId() =>
         int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : null;
+
+    private static BadgeDto Make(string code, string title, string description,
+        bool earned, int current, int target) => new()
+    {
+        Code = code,
+        Title = title,
+        Description = description,
+        Earned = earned,
+        Current = current,
+        Target = target,
+        Progress = Math.Clamp((double)current / target, 0, 1)
+    };
+
+    private static void AddTypeBadge(List<BadgeDto> badges, string code, string title,
+        string typeName, Dictionary<string, int> byType)
+    {
+        var count = byType.GetValueOrDefault(typeName);
+        badges.Add(new BadgeDto
+        {
+            Code = code,
+            Title = title,
+            Description = $"Подтверждённое участие в мероприятиях «{typeName}» (5)",
+            Earned = count >= 5,
+            Current = count,
+            Target = 5,
+            Progress = Math.Clamp((double)count / 5, 0, 1)
+        });
+    }
+
+    private static void AddSkillBadge(List<BadgeDto> badges, string code, string title,
+        string skillName, List<string> skills)
+    {
+        var has = skills.Contains(skillName, StringComparer.OrdinalIgnoreCase);
+        badges.Add(new BadgeDto
+        {
+            Code = code,
+            Title = title,
+            Description = $"Навык «{skillName}» в профиле",
+            Earned = has,
+            Current = has ? 1 : 0,
+            Target = 1,
+            Progress = has ? 1 : 0
+        });
+    }
 
     private static VolunteerDto ToDto(Volunteer v) => new()
     {

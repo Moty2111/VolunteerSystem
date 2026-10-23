@@ -11,9 +11,28 @@ import { plural } from '../utils/format';
 import {
     User, Mail, Phone, MapPin, Save, Lock, ShieldCheck, AtSign, CalendarDays,
     Clock, CalendarCheck, Sparkles, Award, Activity, HeartPulse, BadgeCheck,
-    Upload, Eye
+    Upload, Eye, Medal, Users, Leaf, Palette, HeartHandshake, Trophy,
+    GraduationCap, Car, ClipboardList, type LucideIcon
 } from 'lucide-react';
-import type { Volunteer, Assignment } from '../types';
+import type { Volunteer, Assignment, AchievementBadge } from '../types';
+
+const BADGE_ICONS: Record<string, LucideIcon> = {
+    'hours-10': Clock,
+    'hours-50': Clock,
+    'hours-100': Clock,
+    veteran: Medal,
+    'month-active': CalendarCheck,
+    social: Users,
+    eco: Leaf,
+    culture: Palette,
+    charity: HeartHandshake,
+    sport: Trophy,
+    education: GraduationCap,
+    medic: HeartPulse,
+    driver: Car,
+    organizer: ClipboardList
+};
+const badgeIcon = (code: string) => BADGE_ICONS[code] || Award;
 
 export default function ProfilePage() {
     const { user, token } = useAuth();
@@ -24,6 +43,7 @@ export default function ProfilePage() {
     const [changingPw, setChangingPw] = useState(false);
     const [myAssignments, setMyAssignments] = useState<Assignment[]>([]);
     const [mySkills, setMySkills] = useState<VolunteerSkill[]>([]);
+    const [badges, setBadges] = useState<AchievementBadge[]>([]);
 
     const [form, setForm] = useState({
         fullName: '',
@@ -60,14 +80,16 @@ export default function ProfilePage() {
             } finally {
                 setLoading(false);
             }
-            // статистика профиля: часы, участия, навыки
+            // статистика профиля: часы, участия, навыки, достижения
             try {
-                const [as, sk] = await Promise.all([
+                const [as, sk, ach] = await Promise.all([
                     assignmentsApi.my(),
-                    skillsApi.getVolunteerSkills(user.volunteerId)
+                    skillsApi.getVolunteerSkills(user.volunteerId),
+                    volunteersApi.achievements(user.volunteerId).catch(() => null)
                 ]);
                 setMyAssignments(as);
                 setMySkills(sk);
+                setBadges(ach?.badges ?? []);
             } catch { /* статистика не критична */ }
         })();
     }, [user]);
@@ -450,6 +472,45 @@ export default function ProfilePage() {
                         {plural(stats.pending, ['назначение ждёт', 'назначения ждут', 'назначений ждут'])} подтверждения часов
                     </div>
                     <Badge variant="warning" icon={<BadgeCheck size={12} />}>ожидает</Badge>
+                </div>
+            )}
+
+            {/* Достижения */}
+            {badges.length > 0 && (
+                <div className="card" style={{ marginTop: 14 }}>
+                    <div className="profile-medbook-head">
+                        <h3 className="section-title" style={{ marginBottom: 0 }}>
+                            <Award size={18} className="section-title-icon" />
+                            Достижения
+                        </h3>
+                        <Badge variant="primary">
+                            {badges.filter(b => b.earned).length} из {badges.length}
+                        </Badge>
+                    </div>
+                    <div className="badge-grid">
+                        {badges.map(b => {
+                            const Icon = badgeIcon(b.code);
+                            return (
+                                <div key={b.code} className={`badge-card ${b.earned ? 'is-earned' : ''}`}>
+                                    <span className="badge-icon"><Icon size={20} /></span>
+                                    <div className="badge-body">
+                                        <div className="badge-title">{b.title}</div>
+                                        <div className="badge-desc">{b.description}</div>
+                                        {!b.earned && b.target > 1 && (
+                                            <div className="progress" style={{ height: 4, marginTop: 8 }}>
+                                                <div className="progress-fill" style={{ width: `${Math.round(b.progress * 100)}%` }} />
+                                            </div>
+                                        )}
+                                        {b.target > 1 && (
+                                            <div className="badge-count num">
+                                                {b.current} / {b.target}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 

@@ -71,6 +71,21 @@ export interface RecommendedEventItem {
     reasons: string[];
 }
 
+export interface AchievementBadge {
+    code: string;
+    title: string;
+    description: string;
+    earned: boolean;
+    progress: number;
+    current: number;
+    target: number;
+}
+
+export interface AchievementsResponse {
+    badges: AchievementBadge[];
+    earnedCount: number;
+}
+
 export interface Assignment {
     assignmentId: number;
     volunteerId: number;

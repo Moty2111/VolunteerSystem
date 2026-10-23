@@ -1,5 +1,5 @@
 import api from './axios';
-import type { Volunteer } from '../types';
+import type { Volunteer, AchievementsResponse } from '../types';
 
 export const volunteersApi = {
     getAll: (params?: { city?: string; active?: boolean }) =>
@@ -25,5 +25,8 @@ export const volunteersApi = {
         api.post<Volunteer>(`/volunteers/${id}/medbook/verify`, data).then(r => r.data),
 
     fetchMedBookScan: (id: number) =>
-        api.get(`/volunteers/${id}/medbook/scan`, { responseType: 'blob' }).then(r => r.data as Blob)
+        api.get(`/volunteers/${id}/medbook/scan`, { responseType: 'blob' }).then(r => r.data as Blob),
+
+    achievements: (id: number) =>
+        api.get<AchievementsResponse>(`/volunteers/${id}/achievements`).then(r => r.data)
 };

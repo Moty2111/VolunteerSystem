@@ -202,7 +202,7 @@ export default function VolunteerDashboard() {
                     <div className="rec-row">
                         {recommended.map(r => {
                             return (
-                                <div key={r.eventId} className="rec-card" onClick={() => navigate('/events', { state: { focus: r.eventId } })}>
+                                <div key={r.eventId} className="rec-card" onClick={() => navigate(`/events?focus=${r.eventId}`, { state: { focus: r.eventId } })}>
                                     <div className="rec-thumb">
                                         <img src={posterFor(r.eventTypeId)} alt="" />
                                     </div>
@@ -228,7 +228,7 @@ export default function VolunteerDashboard() {
                                     <div className="rec-foot">
                                         <button
                                             className="btn btn-primary btn-sm"
-                                            onClick={(e) => { e.stopPropagation(); navigate('/events', { state: { focus: r.eventId } }); }}
+                                            onClick={(e) => { e.stopPropagation(); navigate(`/events?focus=${r.eventId}`, { state: { focus: r.eventId } }); }}
                                         >
                                             <UserPlus size={13} /> Записаться
                                         </button>

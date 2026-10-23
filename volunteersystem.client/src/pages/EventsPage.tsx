@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
 import { reportsApi } from '../api/reports';
@@ -94,6 +94,7 @@ export default function EventsPage() {
     const toast = useToast();
     const location = useLocation();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [items, setItems] = useState<EventItem[]>([]);
     const [myEventIds, setMyEventIds] = useState<number[]>([]);
@@ -149,15 +150,18 @@ export default function EventsPage() {
 
     useEffect(() => { load(); }, []);
 
-    /* Автооткрытие карточки события из location.state.focus (переход с рекомендаций) */
+    /* Автооткрытие карточки события: из ?focus=<id> или location.state.focus */
     useEffect(() => {
-        const focus = (location.state as { focus?: number } | null)?.focus;
-        if (!focus || typeof focus !== 'number' || focus <= 0) return;
+        const fromQuery = Number(searchParams.get('focus'));
+        const fromState = (location.state as { focus?: number } | null)?.focus;
+        const focus = Number.isFinite(fromQuery) && fromQuery > 0 ? fromQuery : fromState;
+        if (!focus || focus <= 0) return;
         eventsApi.getById(focus)
             .then(e => setDetails(e))
             .catch(() => { /* событие недоступно — игнорируем */ });
-        // очищаем state, чтобы повторный клик на то же событие сработал
-        navigate(location.pathname, { replace: true, state: null });
+        // очищаем параметры, чтобы повторный клик сработал
+        if (searchParams.get('focus')) setSearchParams({}, { replace: true });
+        else navigate(location.pathname, { replace: true, state: null });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location]);
 

@@ -201,14 +201,10 @@ export default function VolunteerDashboard() {
                     </div>
                     <div className="rec-row">
                         {recommended.map(r => {
-                            const d = new Date(r.dateStart);
                             return (
-                                <div key={r.eventId} className="rec-card" onClick={() => navigate(`/events?focus=${r.eventId}`)}>
+                                <div key={r.eventId} className="rec-card" onClick={() => navigate('/events', { state: { focus: r.eventId } })}>
                                     <div className="rec-thumb">
                                         <img src={posterFor(r.eventTypeId)} alt="" />
-                                        <span className="thumb-date">
-                                            {d.getDate()} {d.toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '')}
-                                        </span>
                                     </div>
                                     <div className="rec-body">
                                         <div className="rec-title" title={r.eventName}>{r.eventName}</div>
@@ -232,7 +228,7 @@ export default function VolunteerDashboard() {
                                     <div className="rec-foot">
                                         <button
                                             className="btn btn-primary btn-sm"
-                                            onClick={(e) => { e.stopPropagation(); navigate(`/events?focus=${r.eventId}`); }}
+                                            onClick={(e) => { e.stopPropagation(); navigate('/events', { state: { focus: r.eventId } }); }}
                                         >
                                             <UserPlus size={13} /> Записаться
                                         </button>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
 import { reportsApi } from '../api/reports';
@@ -92,7 +92,8 @@ function daysUntil(dateStr: string): string {
 export default function EventsPage() {
     const { user, token } = useAuth();
     const toast = useToast();
-    const [searchParams, setSearchParams] = useSearchParams();
+    const location = useLocation();
+    const navigate = useNavigate();
 
     const [items, setItems] = useState<EventItem[]>([]);
     const [myEventIds, setMyEventIds] = useState<number[]>([]);
@@ -148,17 +149,17 @@ export default function EventsPage() {
 
     useEffect(() => { load(); }, []);
 
-    /* Автооткрытие карточки события из ?focus=<id> (переход с рекомендаций) */
+    /* Автооткрытие карточки события из location.state.focus (переход с рекомендаций) */
     useEffect(() => {
-        const focus = searchParams.get('focus');
-        if (!focus) return;
-        const id = Number(focus);
-        if (!Number.isFinite(id) || id <= 0) return;
-        eventsApi.getById(id)
+        const focus = (location.state as { focus?: number } | null)?.focus;
+        if (!focus || typeof focus !== 'number' || focus <= 0) return;
+        eventsApi.getById(focus)
             .then(e => setDetails(e))
-            .catch(() => { /* событие недоступно — просто игнорируем */ });
-        setSearchParams({}, { replace: true });
-    }, [searchParams, setSearchParams]);
+            .catch(() => { /* событие недоступно — игнорируем */ });
+        // очищаем state, чтобы повторный клик на то же событие сработал
+        navigate(location.pathname, { replace: true, state: null });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location]);
 
     useEffect(() => {
         if (!details) return;

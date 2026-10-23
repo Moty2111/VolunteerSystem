@@ -23,17 +23,18 @@ const markerIcon = L.divIcon({
 
 const TILE_LAYERS: Array<{ url: string; opts: Record<string, unknown> }> = [
     {
-        // Esri World Street Map — стабильно работает без ключа
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        // OpenStreetMap (без «s»-поддоменов — надёжнее)
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         opts: { maxZoom: 19 }
-    },
-    {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        opts: { subdomains: 'abc', maxZoom: 19 }
     },
     {
         url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
         opts: { subdomains: 'abcd', maxZoom: 20 }
+    },
+    {
+        // отri World Street Map — запасной вариант
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        opts: { maxZoom: 19 }
     }
 ];
 
@@ -112,20 +113,29 @@ export default function EventMap({ address, height = 260 }: Props) {
                 const addTiles = (index: number) => {
                     if (stopped || !map) return;
                     const src = TILE_LAYERS[index];
-                    let tileErrors = 0;
+
+                    // Смена провайдера при «битых» тайлах: сетевые ошибки
+                    // или подозрительно маленькие/пустые (например "API required").
+                    let badTiles = 0;
+                    const maybeSwitch = () => {
+                        badTiles++;
+                        if (TILE_LAYERS[index + 1] && !stopped && badTiles >= 2) {
+                            tileLayer?.remove();
+                            addTiles(index + 1);
+                        } else if (!TILE_LAYERS[index + 1] && badTiles >= 4) {
+                            setFailed(true);
+                        }
+                    };
+
                     tileLayer = L.tileLayer(src.url, {
                         ...src.opts,
                         attribution:
                             '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
                     });
-                    tileLayer.on('tileerror', () => {
-                        // Подложка не загрузилась — пробуем следующего провайдера.
-                        // Несколько ошибок подряд тоже считаем признаком «битого» источника.
-                        tileErrors++;
-                        if (TILE_LAYERS[index + 1] && !stopped && tileErrors >= 2) {
-                            tileLayer?.remove();
-                            addTiles(index + 1);
-                        }
+                    tileLayer.on('tileerror', maybeSwitch);
+                    tileLayer.on('tileload', (ev: { tile?: HTMLImageElement }) => {
+                        const img = ev.tile;
+                        if (img && img.naturalWidth && img.naturalWidth < 32) maybeSwitch();
                     });
                     tileLayer.addTo(map);
                 };

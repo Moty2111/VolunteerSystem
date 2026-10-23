@@ -226,7 +226,7 @@ public static class DbInitializer
         logger.LogInformation("Проведено обновление медкнижки до версии 4");
     }
 
-    private const int CurrentDemoDataVersion = 4;
+    private const int CurrentDemoDataVersion = 5;
 
     /// <summary>БД считается незаполненной, если в ней нет ни ролей, ни пользователей.</summary>
     private static async Task<bool> IsEmptyAsync(string connString, ILogger logger)
@@ -411,6 +411,18 @@ public static class DbInitializer
             CONSTRAINT chk_event_dates CHECK (date_end > date_start),
             FOREIGN KEY (event_type_id)  REFERENCES EventType(event_type_id),
             FOREIGN KEY (coordinator_id) REFERENCES SystemUser(user_id)
+        );
+        GO
+
+        -- 5.1. Обсуждение мероприятий
+        CREATE TABLE EventComment (
+            comment_id INT PRIMARY KEY IDENTITY(1,1),
+            event_id   INT           NOT NULL,
+            user_id    INT           NOT NULL,
+            text       NVARCHAR(2000) NOT NULL,
+            created_at DATETIME      NOT NULL DEFAULT GETDATE(),
+            FOREIGN KEY (event_id) REFERENCES Event(event_id)     ON DELETE CASCADE,
+            FOREIGN KEY (user_id)  REFERENCES SystemUser(user_id) ON DELETE CASCADE
         );
         GO
 
@@ -1265,6 +1277,38 @@ public static class DbInitializer
         SET med_book_status = N'Просрочена'
         WHERE med_book_status = N'Подтверждена'
           AND med_book_valid_until < CAST(GETDATE() AS DATE);
+        GO
+
+        -- 15. Обсуждение мероприятий (версия 5)
+        IF OBJECT_ID(N'dbo.EventComment') IS NULL
+        BEGIN
+            CREATE TABLE EventComment (
+                comment_id INT PRIMARY KEY IDENTITY(1,1),
+                event_id   INT           NOT NULL,
+                user_id    INT           NOT NULL,
+                text       NVARCHAR(2000) NOT NULL,
+                created_at DATETIME      NOT NULL DEFAULT GETDATE(),
+                FOREIGN KEY (event_id) REFERENCES Event(event_id)     ON DELETE CASCADE,
+                FOREIGN KEY (user_id)  REFERENCES SystemUser(user_id) ON DELETE CASCADE
+            );
+        END;
+        GO
+
+        -- Демо-комментарии: к событию 2 (Помощь детскому дому)
+        IF NOT EXISTS (SELECT 1 FROM EventComment WHERE event_id = 2)
+        BEGIN
+            INSERT INTO EventComment (event_id, user_id, text, created_at)
+            SELECT e.event_id, u.user_id, N'Друзья! Сбор у входа в 9:45, форма удобная. Вопросы — сюда.', DATEADD(DAY, -5, GETDATE())
+            FROM [Event] e
+            JOIN SystemUser u ON u.login_name = N'manager1'
+            WHERE e.event_name = N'Помощь детскому дому';
+
+            INSERT INTO EventComment (event_id, user_id, text, created_at)
+            SELECT e.event_id, u.user_id, N'Буду, помогу с мастер-классами. Возьму краски и бумагу.', DATEADD(DAY, -4, GETDATE())
+            FROM [Event] e
+            JOIN SystemUser u ON u.login_name = N'ivanov'
+            WHERE e.event_name = N'Помощь детскому дому';
+        END;
         GO
 
         """;

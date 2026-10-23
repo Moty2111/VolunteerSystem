@@ -27,6 +27,8 @@ public partial class Event
 
     public virtual ICollection<Assignment> Assignments { get; set; } = new List<Assignment>();
 
+    public virtual ICollection<EventComment> Comments { get; set; } = new List<EventComment>();
+
     public virtual ICollection<Event_Partner> Event_Partners { get; set; } = new List<Event_Partner>();
 
     public virtual SystemUser coordinator { get; set; } = null!;

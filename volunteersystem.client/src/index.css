@@ -5990,9 +5990,7 @@ tbody tr.row-clickable {
 
 /* ============================================================
    ДОСТИЖЕНИЯ (бейджи) в профиле
-   ============================================================ */
-
-.badge-grid {
+   ============================================================ */.badge-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 10px;
@@ -6061,6 +6059,146 @@ tbody tr.row-clickable {
     font-size: 11px;
     font-weight: 700;
     color: var(--text-2);
+}
+
+/* ============================================================
+   ОБСУЖДЕНИЕ МЕРОПРИЯТИЯ (чат в модалке)
+   ============================================================ */
+
+.event-comments {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+}
+
+.event-comments-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.event-comments-head h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-family: var(--font-head);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.event-comments-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 1px 8px;
+}
+
+.comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.comment-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.comment-avatar {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+}
+
+.comment-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.comment-author {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text);
+}
+
+.comment-time {
+    font-size: 11px;
+    color: var(--text-3);
+}
+
+.comment-delete {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin-left: auto;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    transition: background .12s ease, color .12s ease;
+}
+
+.comment-delete:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+}
+
+.comment-text {
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.comments-empty {
+    padding: 14px;
+    font-size: 12.5px;
+    color: var(--text-3);
+    background: var(--surface-2);
+    border: 1px dashed var(--border-2);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.comment-form {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.comment-form .input {
+    flex: 1;
 }
 
 /* ============================================================

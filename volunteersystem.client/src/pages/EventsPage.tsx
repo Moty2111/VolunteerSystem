@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
-import type { EventItem } from '../types';
+import type { EventItem, EventCommentItem } from '../types';
 import { plural } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
@@ -13,7 +13,7 @@ import { IllCalendar } from '../components/illustrations';
 import {
     Plus, Search, Trash2, Calendar, MapPin, Users, Clock, Check, X,
     Info, UserCheck, ArrowDownUp, ArrowRight, CalendarClock, ImageOff,
-    Eye, UserPlus
+    Eye, UserPlus, Send, MessageSquare, Trash2 as DeleteIcon
 } from 'lucide-react';
 import posterSocial from '../assets/events/social.svg';
 import posterEco from '../assets/events/eco.svg';
@@ -71,7 +71,7 @@ function daysUntil(dateStr: string): string {
 }
 
 export default function EventsPage() {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const toast = useToast();
 
     const [items, setItems] = useState<EventItem[]>([]);
@@ -84,9 +84,22 @@ export default function EventsPage() {
     const [showForm, setShowForm] = useState(false);
     const [details, setDetails] = useState<EventItem | null>(null);
     const [view, setView] = useViewMode('events');
+    const [comments, setComments] = useState<EventCommentItem[]>([]);
+    const [commentText, setCommentText] = useState('');
+    const [sendingComment, setSendingComment] = useState(false);
 
     const canEdit = user?.role === 'Администратор' || user?.role === 'Менеджер';
     const isVolunteer = user?.role === 'Волонтёр';
+
+    /* id текущего пользователя из JWT (claim UserId) — для прав на удаление */
+    const ownUserId = useMemo(() => {
+        try {
+            const b64 = (token || '').split('.')[1] || '';
+            const json = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+            const payload = JSON.parse(json);
+            return Number(payload.UserId ?? 0);
+        } catch { return 0; }
+    }, [token]);
 
     const [form, setForm] = useState({
         eventName: '', dateStart: '', dateEnd: '', location: '',
@@ -113,6 +126,40 @@ export default function EventsPage() {
     };
 
     useEffect(() => { load(); }, []);
+
+    useEffect(() => {
+        if (!details) return;
+        setComments([]);
+        eventsApi.getComments(details.eventId)
+            .then(setComments)
+            .catch(() => { /* не критично */ });
+    }, [details]);
+
+    const handleSendComment = async () => {
+        if (!details || !commentText.trim()) return;
+        setSendingComment(true);
+        try {
+            const created = await eventsApi.addComment(details.eventId, { text: commentText.trim() });
+            setComments(prev => [created, ...prev]);
+            setCommentText('');
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось отправить сообщение');
+        } finally {
+            setSendingComment(false);
+        }
+    };
+
+    const handleDeleteComment = async (comment: EventCommentItem) => {
+        if (!details) return;
+        try {
+            await eventsApi.deleteComment(details.eventId, comment.commentId);
+            setComments(prev => prev.filter(c => c.commentId !== comment.commentId));
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось удалить сообщение');
+        }
+    };
 
     const filtered = useMemo(() => {
         let list = items;
@@ -539,6 +586,69 @@ value = {`${details.assignmentsCount}`}
         </div>
             )
 }
+
+{/* Обсуждение мероприятия */}
+<div className="event-comments">
+    <div className="event-comments-head">
+        <h4><MessageSquare size={16} /> Обсуждение</h4>
+        <span className="event-comments-count">{comments.length}</span>
+    </div>
+
+    {comments.length > 0 ? (
+        <div className="comments-list">
+            {comments.map(c => {
+                const canDelete = user?.role === 'Администратор' || c.userId === ownUserId;
+                return (
+                    <div key={c.commentId} className="comment-item">
+                        <span className="comment-avatar">{c.authorName.charAt(0).toUpperCase()}</span>
+                        <div className="comment-body">
+                            <div className="comment-meta">
+                                <span className="comment-author">{c.authorName}</span>
+                                <span className="comment-time">
+                                    {new Date(c.createdAt).toLocaleString('ru-RU', {
+                                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                                    })}
+                                </span>
+                                {canDelete && (
+                                    <button
+                                        className="comment-delete"
+                                        onClick={() => handleDeleteComment(c)}
+                                        title="Удалить сообщение"
+                                        aria-label="Удалить сообщение"
+                                    >
+                                        <DeleteIcon size={12} />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="comment-text">{c.text}</div>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    ) : (
+        <div className="comments-empty">Пока нет сообщений — будьте первым!</div>
+    )}
+
+    <div className="comment-form">
+        <input
+            className="input"
+            placeholder="Написать сообщение…"
+            value={commentText}
+            onChange={e => setCommentText(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment(); } }}
+            maxLength={2000}
+        />
+        <button
+            className="btn btn-primary"
+            onClick={handleSendComment}
+            disabled={sendingComment || !commentText.trim()}
+        >
+            {sendingComment ? <span className="spinner" /> : <Send size={14} />}
+            Отправить
+        </button>
+    </div>
+</div>
 </>
         )}
 </Modal>

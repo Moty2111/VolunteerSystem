@@ -86,6 +86,15 @@ export interface AchievementsResponse {
     earnedCount: number;
 }
 
+export interface EventCommentItem {
+    commentId: number;
+    eventId: number;
+    userId: number;
+    authorName: string;
+    text: string;
+    createdAt: string;
+}
+
 export interface Assignment {
     assignmentId: number;
     volunteerId: number;

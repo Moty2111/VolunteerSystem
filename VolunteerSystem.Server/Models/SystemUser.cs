@@ -21,6 +21,8 @@ public partial class SystemUser
 
     public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
 
+    public virtual ICollection<EventComment> Comments { get; set; } = new List<EventComment>();
+
     public virtual ICollection<Event> Events { get; set; } = new List<Event>();
 
     public virtual Volunteer? volunteer { get; set; }

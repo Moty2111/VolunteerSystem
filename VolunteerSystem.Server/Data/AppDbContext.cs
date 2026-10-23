@@ -18,6 +18,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Event> Events { get; set; }
 
+    public virtual DbSet<EventComment> EventComments { get; set; }
+
     public virtual DbSet<EventType> EventTypes { get; set; }
 
     public virtual DbSet<Event_Partner> Event_Partners { get; set; }
@@ -133,6 +135,30 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.event_type_id)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__Event__event_typ__693CA210");
+        });
+
+        modelBuilder.Entity<EventComment>(entity =>
+        {
+            entity.HasKey(e => e.comment_id).HasName("PK__EventCom__6FF6C9E6B9A38F7A");
+
+            entity.ToTable("EventComment");
+
+            entity.HasIndex(e => e.event_id, "idx_eventcomment_event");
+
+            entity.Property(e => e.created_at)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime");
+            entity.Property(e => e.text).HasMaxLength(2000);
+
+            entity.HasOne(d => d._event).WithMany(p => p.Comments)
+                .HasForeignKey(d => d.event_id)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK__EventComm__event__6E8B6712");
+
+            entity.HasOne(d => d.user).WithMany(p => p.Comments)
+                .HasForeignKey(d => d.user_id)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK__EventComm__user__6F7F8B4B");
         });
 
         modelBuilder.Entity<EventType>(entity =>

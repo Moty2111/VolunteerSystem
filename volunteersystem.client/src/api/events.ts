@@ -18,5 +18,14 @@ export const eventsApi = {
         api.delete(`/events/${id}`).then(r => r.data),
 
     recommended: () =>
-        api.get<RecommendedEventItem[]>('/events/recommended').then(r => r.data)
+        api.get<RecommendedEventItem[]>('/events/recommended').then(r => r.data),
+
+    getComments: (eventId: number) =>
+        api.get<EventCommentItem[]>(`/events/${eventId}/comments`).then(r => r.data),
+
+    addComment: (eventId: number, data: { text: string }) =>
+        api.post<EventCommentItem>(`/events/${eventId}/comments`, data).then(r => r.data),
+
+    deleteComment: (eventId: number, commentId: number) =>
+        api.delete(`/events/${eventId}/comments/${commentId}`).then(r => r.data)
 };

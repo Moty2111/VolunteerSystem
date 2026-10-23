@@ -90,6 +90,86 @@ public class EventsController : ControllerBase
     }
 
     // ============================================================
+    // Комментарии к мероприятию (обсуждение)
+    // ============================================================
+    [HttpGet("{id:int}/comments")]
+    public async Task<ActionResult<IEnumerable<EventCommentDto>>> GetComments(int id, CancellationToken ct)
+    {
+        var exists = await _db.Events.AnyAsync(e => e.event_id == id, ct);
+        if (!exists) return NotFound(new { message = "Мероприятие не найдено" });
+
+        var list = await _db.EventComments
+            .AsNoTracking()
+            .Where(c => c.event_id == id)
+            .OrderByDescending(c => c.created_at)
+            .Select(c => new EventCommentDto
+            {
+                CommentId = c.comment_id,
+                EventId = c.event_id,
+                UserId = c.user_id,
+                AuthorName = c.user.login_name,
+                Text = c.text,
+                CreatedAt = c.created_at
+            })
+            .ToListAsync(ct);
+
+        return Ok(list);
+    }
+
+    [HttpPost("{id:int}/comments")]
+    public async Task<ActionResult<EventCommentDto>> AddComment(int id, [FromBody] CreateEventCommentDto dto, CancellationToken ct)
+    {
+        if (!int.TryParse(User.FindFirst("UserId")?.Value, out var userId))
+            return Unauthorized();
+
+        var exists = await _db.Events.AnyAsync(e => e.event_id == id, ct);
+        if (!exists) return NotFound(new { message = "Мероприятие не найдено" });
+
+        var comment = new EventComment
+        {
+            event_id = id,
+            user_id = userId,
+            text = dto.Text.Trim(),
+            created_at = DateTime.Now
+        };
+
+        _db.EventComments.Add(comment);
+        await _db.SaveChangesAsync(ct);
+
+        var authorName = await _db.SystemUsers.AsNoTracking()
+            .Where(u => u.user_id == userId)
+            .Select(u => u.login_name)
+            .FirstOrDefaultAsync(ct);
+
+        return Ok(new EventCommentDto
+        {
+            CommentId = comment.comment_id,
+            EventId = comment.event_id,
+            UserId = comment.user_id,
+            AuthorName = authorName ?? "Пользователь",
+            Text = comment.text,
+            CreatedAt = comment.created_at
+        });
+    }
+
+    [HttpDelete("{id:int}/comments/{commentId:int}")]
+    public async Task<IActionResult> DeleteComment(int id, int commentId, CancellationToken ct)
+    {
+        var comment = await _db.EventComments
+            .FirstOrDefaultAsync(c => c.comment_id == commentId && c.event_id == id, ct);
+        if (comment is null) return NotFound(new { message = "Комментарий не найден" });
+
+        var isAdmin = User.IsInRole("Администратор");
+        var isOwner = int.TryParse(User.FindFirst("UserId")?.Value, out var userId) && userId == comment.user_id;
+        if (!isAdmin && !isOwner)
+            return Forbid();
+
+        _db.EventComments.Remove(comment);
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    // ============================================================
     // POST: /api/events
     // ============================================================
     [HttpPost]

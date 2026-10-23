@@ -1,140 +1,241 @@
 #!/usr/bin/env node
+/**
+ * Единый запуск проекта: backend (ASP.NET Core) + frontend (Vite).
+ *
+ *   npm run dev          — поднять оба процесса
+ *   Ctrl+C              — остановить оба
+ *
+ * Каждому процессу — свой префикс в выводе, плюс проверка готовности:
+ * скрипт дожидается, пока API и фронтенд реально начнут слушать порты,
+ * и только потом печатает адрес приложения.
+ */
+
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chooseServicePort, getPort, readService } from './dev-utils.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const isWin = process.platform === 'win32';
-const children = [];
-let stopping = false;
-let stopPromise;
+const serverDir = path.join(root, 'VolunteerSystem.Server');
+const clientDir = path.join(root, 'volunteersystem.client');
 
-function pipe(stream, name) {
+const API_PORT = 5084;
+const WEB_PORT = parseInt(process.env.DEV_SERVER_PORT || '61000', 10);
+
+const isWin = process.platform === 'win32';
+const npmCmd = isWin ? 'npm.cmd' : 'npm';
+
+const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
+const ESC = '\u001b';
+const paint = (code, text) => (useColor ? `${ESC}[${code}m${text}${ESC}[0m` : text);
+const label = (tag, color) => paint(color, `[${tag}]`);
+
+const BOLD = '1';
+const CYAN = '36';
+const MAGENTA = '35';
+const YELLOW = '33';
+const RED = '31';
+const GREEN = '32';
+const DIM = '2';
+
+/* ---------- проксирование вывода с префиксом ---------- */
+function pipeWithPrefix(stream, tag, color) {
     let buffer = '';
     stream.setEncoding('utf8');
     stream.on('data', chunk => {
-        const lines = (buffer + chunk).split(/\r?\n/);
+        buffer += chunk;
+        const lines = buffer.split(/\r?\n/);
         buffer = lines.pop() ?? '';
-        for (const line of lines) process.stdout.write(`[${name}] ${line}\n`);
-    });
-    stream.on('end', () => {
-        if (buffer) process.stdout.write(`[${name}] ${buffer}\n`);
-    });
-}
-
-function start(name, command, args, cwd, env) {
-    console.log(`[${name}] запускается: ${command} ${args.join(' ')}`);
-    const child = spawn(command, args, {
-        cwd, env: { ...process.env, ...env },
-        stdio: ['ignore', 'pipe', 'pipe'],
-        shell: isWin && /\.(cmd|bat)$/i.test(command),
-        // On Unix each process tree gets a group, so npm's Vite child is stopped too.
-        detached: !isWin
-    });
-    children.push(child);
-    pipe(child.stdout, name);
-    pipe(child.stderr, name);
-    child.on('error', error => {
-        console.error(`[${name}] не удалось запустить: ${error.message}. Проверьте Node.js и .NET SDK в PATH.`);
-        void shutdown(1);
-    });
-    child.on('exit', (code, signal) => {
-        if (!stopping) {
-            console.error(`[${name}] завершился: ${signal || code}`);
-            void shutdown(code || 1);
+        for (const line of lines) {
+            process.stdout.write(`${label(tag, color)} ${line}\n`);
         }
     });
-    return child;
+    stream.on('end', () => {
+        if (buffer.trim()) process.stdout.write(`${label(tag, color)} ${buffer}\n`);
+    });
 }
 
-function killTree(child, signal) {
-    if (!child.pid) return;
-    if (isWin) {
-        return new Promise(resolve => {
-            const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-            killer.once('error', resolve);
-            killer.once('exit', resolve);
-        });
+function pipeError(stream, tag, color) {
+    pipeWithPrefix(stream, tag, color);
+}
+
+/* ---------- проверка, что порт слушается ---------- */
+function canConnect(port, host = '127.0.0.1', timeout = 600) {
+    return new Promise(resolve => {
+        const socket = net.connect({ port, host });
+        const finish = value => { socket.destroy(); resolve(value); };
+        socket.setTimeout(timeout);
+        socket.once('connect', () => finish(true));
+        socket.once('timeout', () => finish(false));
+        socket.once('error', () => finish(false));
+    });
+}
+
+async function waitForPort(port, name, timeoutMs = 120_000) {
+    const started = Date.now();
+    const hosts = ['127.0.0.1', '::1'];
+
+    while (Date.now() - started < timeoutMs) {
+        for (const host of hosts) {
+            if (await canConnect(port, host)) {
+                process.stdout.write(`${label('•', GREEN)} ${name} готов (порт ${port})\n`);
+                return true;
+            }
+        }
+        if (children.some(c => c.exited)) return false;
+        await new Promise(r => setTimeout(r, 400));
     }
-    try { process.kill(-child.pid, signal); } catch { /* Already stopped. */ }
-}
-
-function shutdown(code = 0) {
-    if (stopPromise) return stopPromise;
-    stopping = true;
-    process.exitCode = code;
-    stopPromise = (async () => {
-        const closed = children.map(child => new Promise(resolve => {
-            if (child.exitCode !== null || child.signalCode !== null) resolve();
-            else child.once('close', resolve);
-        }));
-        await Promise.all(children.map(child => killTree(child, 'SIGTERM')));
-        let timeout;
-        await Promise.race([
-            Promise.all(closed),
-            new Promise(resolve => { timeout = setTimeout(resolve, 5000); })
-        ]);
-        clearTimeout(timeout);
-        await Promise.all(children.map(child => killTree(child, 'SIGKILL')));
-    })();
-    return stopPromise;
-}
-
-process.on('SIGINT', () => { void shutdown(0); });
-process.on('SIGTERM', () => { void shutdown(0); });
-
-async function waitFor(check, name) {
-    const deadline = Date.now() + 120_000;
-    while (!stopping && Date.now() < deadline) {
-        if (await check()) return true;
-        await new Promise(resolve => setTimeout(resolve, 400));
-    }
-    if (!stopping) console.error(`[!] ${name} не готов за 120 с. Проверьте вывод выше и подключение к SQL Server.`);
     return false;
 }
 
-async function main() {
-    const preferredApi = getPort(process.env.DEV_API_PORT, 5084);
-    const preferredWeb = getPort(process.env.DEV_SERVER_PORT, 61000);
-    const { port: apiPort, existing: existingApi } = await chooseServicePort(preferredApi, {
-        service: 'VolunteerSystem.Api', pathname: '/api/dev/status'
-    });
-    const apiTarget = `http://localhost:${apiPort}`;
-    const useHttps = process.env.DEV_HTTPS === '1';
-    const scheme = useHttps ? 'https' : 'http';
-    const { port: webPort, existing: reuseWeb } = await chooseServicePort(preferredWeb, {
-        service: 'VolunteerSystem.Web', pathname: '/__volunteersystem/dev', scheme,
-        excluded: [apiPort], accept: info => info.apiTarget === apiTarget
-    });
-    const webUrl = `${scheme}://localhost:${webPort}`;
-    if (apiPort !== preferredApi) console.log(`[API] Порт ${preferredApi} занят; выбран ${apiPort}.`);
-    if (webPort !== preferredWeb) console.log(`[WEB] Порт ${preferredWeb} занят; выбран ${webPort}.`);
-    if (stopping) return;
-
-    if (existingApi) console.log(`[API] Уже запущен на ${apiTarget}.`);
-    else start('API', 'dotnet', ['run', '--project', path.join(root, 'VolunteerSystem.Server'),
-        '--no-launch-profile', '--urls', apiTarget], root, { ASPNETCORE_ENVIRONMENT: 'Development' });
-
-    if (reuseWeb) console.log(`[WEB] Уже запущен на ${webUrl}.`);
-    else start('WEB', isWin ? 'npm.cmd' : 'npm', ['run', 'dev:web'], path.join(root, 'volunteersystem.client'), {
-        DEV_API_TARGET: apiTarget, DEV_SERVER_PORT: String(webPort)
-    });
-
-    const ready = await Promise.all([
-        waitFor(() => readService(`${apiTarget}/api/dev/status`, 'VolunteerSystem.Api'), 'API'),
-        waitFor(async () => {
-            const info = await readService(`${webUrl}/__volunteersystem/dev`, 'VolunteerSystem.Web');
-            return info?.apiTarget === apiTarget;
-        }, 'Фронтенд')
-    ]);
-    if (stopping) return;
-    if (ready.every(Boolean)) {
-        console.log(`\nПроект запущен\nПриложение: ${webUrl}\nAPI: ${apiTarget}\nSwagger: ${apiTarget}/swagger\nОстановить — Ctrl+C\n`);
-    } else await shutdown(1);
+/* ---------- готовность API (не просто порт, а живой ответ) ---------- */
+async function isApiHealthy() {
+    try {
+        const res = await fetch(`http://localhost:${API_PORT}/api/health`, {
+            signal: AbortSignal.timeout(1500)
+        });
+        return res.ok;
+    } catch {
+        return false;
+    }
 }
 
-main().catch(async error => {
-    console.error(`[!] ${error.message}`);
-    await shutdown(1);
+async function waitForApi(timeoutMs = 120_000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        if (await isApiHealthy()) {
+            return true;
+        }
+        if (children.some(c => c.exited)) return false;
+        await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
+}
+
+/* ---------- запуск дочерних процессов ---------- */
+const children = [];
+let shuttingDown = false;
+
+function start(name, color, command, args, cwd) {
+    process.stdout.write(`${label(name, color)} запускается: ${command} ${args.join(' ')}\n`);
+
+    /* На Windows npm — это npm.cmd, а Node не запускает .cmd без оболочки
+       (spawn EINVAL). Для .cmd используем shell, для .exe — напрямую. */
+    const needsShell = isWin && /\.(cmd|bat)$/i.test(command);
+
+    let child;
+    try {
+        child = spawn(command, args, {
+            cwd,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            shell: needsShell,
+            // Vite и dotnet любят собственный вывод в терминал
+            env: { ...process.env, FORCE_COLOR: process.env.FORCE_COLOR ?? '1' }
+        });
+    } catch (err) {
+        process.stdout.write(`${label(name, RED)} не удалось запустить: ${err.message}\n`);
+        shutdown(1);
+        return null;
+    }
+
+    pipeWithPrefix(child.stdout, name, color);
+    pipeError(child.stderr, name, color);
+
+    child.exited = false;
+    child.on('exit', code => {
+        child.exited = true;
+        if (!shuttingDown) {
+            process.stdout.write(
+                `${label(name, RED)} завершился с кодом ${code ?? '—'}\n`
+            );
+            shutdown(code ?? 1);
+        }
+    });
+
+    child.on('error', err => {
+        process.stdout.write(`${label(name, RED)} не запустился: ${err.message}\n`);
+        if (err.code === 'ENOENT') {
+            process.stdout.write(
+                `${label('!', YELLOW)} Проверьте, что в системе есть ` +
+                `${isWin ? 'node.js и .NET SDK' : 'node.js и .NET SDK'} (PATH).\n`
+            );
+        }
+        shutdown(1);
+    });
+
+    children.push(child);
+    return child;
+}
+
+function shutdown(code = 0) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    for (const child of children) {
+        if (!child.exited) {
+            try { child.kill(); } catch { /* уже мёртв */ }
+        }
+    }
+    process.exit(code);
+}
+
+process.on('SIGINT', () => {
+    process.stdout.write('\n');
+    shutdown(0);
 });
+process.on('SIGTERM', () => shutdown(0));
+
+/* ---------- старт ---------- */
+process.stdout.write(
+    `${paint(BOLD, 'VolunteerSystem')} — запуск проекта\n` +
+    `${label('•', DIM)} сервер: ${serverDir}\n` +
+    `${label('•', DIM)} клиент: ${clientDir}\n\n`
+);
+
+/* Повторный запуск не должен падать: если сервер уже отвечает — не плодим
+   второй экземпляр. Проверяем именно健康-эндпоинт, а не «порт занят»:
+   занятый порт может принадлежать чему-то другому. */
+const apiAlreadyRunning = await isApiHealthy();
+
+if (apiAlreadyRunning) {
+    process.stdout.write(
+        `${label('•', YELLOW)} API уже отвечает на ${API_PORT} — второй сервер не запускаем.\n\n`
+    );
+} else {
+    const portTaken = await canConnect(API_PORT, '127.0.0.1') || await canConnect(API_PORT, '::1');
+    if (portTaken) {
+        process.stdout.write(
+            `${label('!', YELLOW)} Порт ${API_PORT} занят, но API не отвечает — возможно, сервер ещё\n` +
+            `        запускается или занят другой программой. Пробуем поднять свой…\n\n`
+        );
+    }
+    start('API', CYAN, 'dotnet', ['run', '--project', serverDir, '--launch-profile', 'http'], root);
+}
+
+start('WEB', MAGENTA, npmCmd, ['run', 'dev:web'], clientDir);
+
+const bootStarted = Date.now();
+const apiReady = apiAlreadyRunning || await waitForApi();
+const webReady = await waitForPort(WEB_PORT, 'Фронтенд');
+const bootSeconds = ((Date.now() - bootStarted) / 1000).toFixed(1);
+
+if (apiReady && webReady) {
+    process.stdout.write(
+        `\n${paint(GREEN, '  Проект запущен')}${paint(DIM, `  (API поднялся за ${bootSeconds} с)`)}\n` +
+        `  ${paint(DIM, 'Приложение:')} https://localhost:${WEB_PORT}\n` +
+        `  ${paint(DIM, 'API:')}          http://localhost:${API_PORT}\n` +
+        `  ${paint(DIM, 'Swagger:')}      http://localhost:${API_PORT}/swagger\n` +
+        `  ${paint(DIM, 'Health:')}       http://localhost:${API_PORT}/api/health\n\n` +
+        `${paint(DIM, '  Остановить — Ctrl+C')}\n\n`
+    );
+} else if (!webReady) {
+    process.stdout.write(
+        `${label('!', YELLOW)} Фронтенд не поднялся на порту ${WEB_PORT}. ` +
+        `Проверьте вывод команды [WEB] выше.\n`
+    );
+} else {
+    process.stdout.write(
+        `${label('!', YELLOW)} API не отвечает на ${API_PORT}. ` +
+        `Проверьте вывод команды [API] выше (чаще всего — SQL Server не запущен).\n`
+    );
+}

@@ -12,6 +12,7 @@ import VolunteerProfileModal from './VolunteerProfileModal';
 import { reportsApi } from '../api/reports';
 import { getLevel } from '../utils/level';
 import { plural } from '../utils/format';
+import { filterVolunteers } from '../utils/filters';
 import {
     Plus, Search, Trash2, Users, Eye, MapPin, Phone, Mail,
     Award, Shield, ShieldCheck, Activity, ChevronLeft, ChevronRight,
@@ -49,11 +50,8 @@ export default function VolunteersPage() {
     const load = async () => {
         setLoading(true);
         try {
-            const params: Record<string, unknown> = {};
-            if (cityFilter) params.city = cityFilter;
-            if (activeFilter) params.active = activeFilter === 'true';
             const [list, summary] = await Promise.all([
-                volunteersApi.getAll(params),
+                volunteersApi.getAll(),
                 (reportsApi.volunteerSummary() as Promise<{ volunteer_id: number; total_hours: number }[]>)
                     .catch(() => [])
             ]);
@@ -79,15 +77,8 @@ export default function VolunteersPage() {
     useEffect(() => { load(); }, []);
 
     const filtered = useMemo(() => {
-        if (!search) return items;
-        const q = search.toLowerCase();
-        return items.filter(v =>
-            v.fullName.toLowerCase().includes(q) ||
-            v.city.toLowerCase().includes(q) ||
-            v.email.toLowerCase().includes(q) ||
-            v.phone.includes(q)
-        );
-    }, [items, search]);
+        return filterVolunteers(items, search, cityFilter, activeFilter);
+    }, [items, search, cityFilter, activeFilter]);
 
     const sorted = useMemo(() => {
         const arr = [...filtered];
@@ -108,9 +99,11 @@ export default function VolunteersPage() {
         return arr;
     }, [filtered, sort, hoursMap]);
 
+    const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+    const currentPage = Math.min(page, totalPages);
     const paged = useMemo(
-        () => sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-        [sorted, page]
+        () => sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+        [sorted, currentPage]
     );
 
     useEffect(() => { setPage(1); }, [search, cityFilter, activeFilter]);
@@ -142,20 +135,18 @@ export default function VolunteersPage() {
         }
     };
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-
     const pager = totalPages > 1 ? (
         <div style={ { display: 'flex', justifyContent: 'center', gap: 8, alignItems: 'center', marginTop: 16 } }>
-            <button className="btn btn-secondary btn-sm" disabled = { page === 1
+            <button className="btn btn-secondary btn-sm" disabled = { currentPage === 1
 }
-onClick = {() => setPage(p => p - 1)} aria-label = "Предыдущая страница">
+onClick = {() => setPage(currentPage - 1)} aria-label = "Предыдущая страница">
     <ChevronLeft size={ 16 } />
         </button>
     < span style = {{ fontSize: 13, color: 'var(--text-2)', minWidth: 80, textAlign: 'center' }}>
-        { page } / { totalPages }
+        { currentPage } / { totalPages }
         </span>
-        < button className = "btn btn-secondary btn-sm" disabled = { page === totalPages}
-    onClick = {() => setPage(p => p + 1)} aria-label = "Следующая страница">
+        < button className = "btn btn-secondary btn-sm" disabled = { currentPage === totalPages}
+    onClick = {() => setPage(currentPage + 1)} aria-label = "Следующая страница">
             <ChevronRight size={ 16 } />
         </button>
     </div>

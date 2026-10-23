@@ -5,7 +5,8 @@
   "description": "VolunteerSystem — система управления волонтёрами (клиент + сервер)",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "dev:api": "npm --prefix VolunteerSystem.Server run dev",
+    "dev:api": "dotnet run --project VolunteerSystem.Server --launch-profile http",
+    "test": "node --test tests/*.test.mjs",
     "dev:web": "npm --prefix volunteersystem.client run dev:web",
     "build": "npm --prefix volunteersystem.client run build",
     "install:all": "npm --prefix volunteersystem.client install"

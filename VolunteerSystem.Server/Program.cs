@@ -1,4 +1,3 @@
-using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -323,6 +322,9 @@ app.UseStatusCodePages(async context =>
 
 if (app.Environment.IsDevelopment())
 {
+    // Identifies this API even when database health checks report an outage.
+    app.MapGet("/api/dev/status", () => Results.Ok(new { service = "VolunteerSystem.Api" }))
+        .AllowAnonymous();
     app.UseRequestLogging();
     app.UseSwagger();
     app.UseSwaggerUI(c =>
@@ -366,24 +368,6 @@ app.MapFallbackToFile("/index.html");
 // ============================================================
 try
 {
-    // Если фронтенд уже поднят — предупреждаем, иначе запуск из IDE выглядит «сломанным»
-    if (app.Environment.IsDevelopment())
-    {
-        var devPort = builder.Configuration.GetValue("DevServerPort", 61000);
-        try
-        {
-            using var probe = new TcpClient();
-            await probe.ConnectAsync("localhost", devPort).WaitAsync(TimeSpan.FromMilliseconds(400));
-            app.Logger.LogWarning(
-                "Порт {Port} уже занят — вероятно, dev-сервер фронтенда уже запущен. " +
-                "Приложение доступно: https://localhost:{Port}", devPort, devPort);
-        }
-        catch
-        {
-            /* порт свободен — ничего не сообщаем */
-        }
-    }
-
     app.Logger.LogInformation("API слушает: {Urls}",
         string.Join(", ", app.Urls.DefaultIfEmpty("по умолчанию из launchSettings.json")));
     app.Run();

@@ -1,15 +1,10 @@
 import { useEffect, useState } from 'react';
 import { MapPin, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { geocode, type Geo } from '../utils/geocode';
 
 interface Props {
     address: string;
     height?: number;
-}
-
-interface Geo {
-    lat: number;
-    lon: number;
-    display_name?: string;
 }
 
 /**
@@ -18,63 +13,15 @@ interface Geo {
  * кэшируются в sessionStorage, чтобы не дёргать сервис повторно.
  */
 export default function EventMap({ address, height = 260 }: Props) {
-    const [geo, setGeo] = useState<Geo | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [failed, setFailed] = useState(false);
+    const [result, setResult] = useState<{ address: string; geo: Geo | null } | null>(null);
+    const loading = Boolean(address.trim()) && result?.address !== address;
+    const geo = result?.address === address ? result.geo : null;
 
     useEffect(() => {
-        if (!address) {
-            setLoading(false);
-            setFailed(true);
-            return;
-        }
-
         let cancelled = false;
-        const key = `geo:${address.toLowerCase().trim()}`;
-        const cached = sessionStorage.getItem(key);
-
-        const apply = (g: Geo | null) => {
-            if (cancelled) return;
-            if (g) {
-                setGeo(g);
-                setFailed(false);
-            } else {
-                setFailed(true);
-            }
-            setLoading(false);
-        };
-
-        if (cached) {
-            try {
-                apply(JSON.parse(cached) as Geo);
-                return () => { cancelled = true; };
-            } catch { sessionStorage.removeItem(key); }
-        }
-
-        setLoading(true);
-        const queries = [address, `${address}, Россия`];
-        (async () => {
-            for (const q of queries) {
-                try {
-                    const url =
-                        `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ru&q=${encodeURIComponent(q)}`;
-                    const res = await fetch(url);
-                    if (!res.ok) continue;
-                    const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
-                    if (data.length > 0) {
-                        const g: Geo = {
-                            lat: Number(data[0].lat),
-                            lon: Number(data[0].lon),
-                            display_name: data[0].display_name
-                        };
-                        sessionStorage.setItem(key, JSON.stringify(g));
-                        apply(g);
-                        return;
-                    }
-                } catch { /* пробуем следующий вариант */ }
-            }
-            apply(null);
-        })();
+        geocode(address).then(geo => {
+            if (!cancelled) setResult({ address, geo });
+        });
 
         return () => { cancelled = true; };
     }, [address]);
@@ -90,7 +37,7 @@ export default function EventMap({ address, height = 260 }: Props) {
         );
     }
 
-    if (failed || !geo) {
+    if (!geo) {
         return (
             <div className="event-map fallback" style={{ height }}>
                 <AlertTriangle size={22} />

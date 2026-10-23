@@ -23,6 +23,11 @@ const markerIcon = L.divIcon({
 
 const TILE_LAYERS: Array<{ url: string; opts: Record<string, unknown> }> = [
     {
+        // Esri World Street Map — стабильно работает без ключа
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        opts: { maxZoom: 19 }
+    },
+    {
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         opts: { subdomains: 'abc', maxZoom: 19 }
     },
@@ -107,14 +112,17 @@ export default function EventMap({ address, height = 260 }: Props) {
                 const addTiles = (index: number) => {
                     if (stopped || !map) return;
                     const src = TILE_LAYERS[index];
+                    let tileErrors = 0;
                     tileLayer = L.tileLayer(src.url, {
                         ...src.opts,
                         attribution:
                             '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
                     });
                     tileLayer.on('tileerror', () => {
-                        // Подложка не загрузилась — пробуем следующего провайдера
-                        if (TILE_LAYERS[index + 1] && !stopped) {
+                        // Подложка не загрузилась — пробуем следующего провайдера.
+                        // Несколько ошибок подряд тоже считаем признаком «битого» источника.
+                        tileErrors++;
+                        if (TILE_LAYERS[index + 1] && !stopped && tileErrors >= 2) {
                             tileLayer?.remove();
                             addTiles(index + 1);
                         }

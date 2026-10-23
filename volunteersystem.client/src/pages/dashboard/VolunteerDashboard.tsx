@@ -203,7 +203,7 @@ export default function VolunteerDashboard() {
                         {recommended.map(r => {
                             const d = new Date(r.dateStart);
                             return (
-                                <div key={r.eventId} className="rec-card" onClick={() => navigate('/events')}>
+                                <div key={r.eventId} className="rec-card" onClick={() => navigate(`/events?focus=${r.eventId}`)}>
                                     <div className="rec-thumb">
                                         <img src={posterFor(r.eventTypeId)} alt="" />
                                         <span className="thumb-date">
@@ -217,6 +217,12 @@ export default function VolunteerDashboard() {
                                             <span className="dot-sep">·</span>
                                             <span>{r.eventTypeName || 'мероприятие'}</span>
                                         </div>
+                                        <div className="rec-date">
+                                            <Calendar size={11} />
+                                            {new Date(r.dateStart).toLocaleDateString('ru-RU', {
+                                                day: 'numeric', month: 'long', year: 'numeric'
+                                            })} · {new Date(r.dateStart).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
                                         <div className="rec-reasons">
                                             {r.reasons.map((reason, i) => (
                                                 <span key={i} className="skill-chip">{reason}</span>
@@ -226,7 +232,7 @@ export default function VolunteerDashboard() {
                                     <div className="rec-foot">
                                         <button
                                             className="btn btn-primary btn-sm"
-                                            onClick={(e) => { e.stopPropagation(); navigate('/events'); }}
+                                            onClick={(e) => { e.stopPropagation(); navigate(`/events?focus=${r.eventId}`); }}
                                         >
                                             <UserPlus size={13} /> Записаться
                                         </button>

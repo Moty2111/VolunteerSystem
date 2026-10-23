@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'react-router-dom';
 import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
 import { reportsApi } from '../api/reports';
@@ -91,6 +92,7 @@ function daysUntil(dateStr: string): string {
 export default function EventsPage() {
     const { user, token } = useAuth();
     const toast = useToast();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     const [items, setItems] = useState<EventItem[]>([]);
     const [myEventIds, setMyEventIds] = useState<number[]>([]);
@@ -145,6 +147,18 @@ export default function EventsPage() {
     };
 
     useEffect(() => { load(); }, []);
+
+    /* Автооткрытие карточки события из ?focus=<id> (переход с рекомендаций) */
+    useEffect(() => {
+        const focus = searchParams.get('focus');
+        if (!focus) return;
+        const id = Number(focus);
+        if (!Number.isFinite(id) || id <= 0) return;
+        eventsApi.getById(id)
+            .then(e => setDetails(e))
+            .catch(() => { /* событие недоступно — просто игнорируем */ });
+        setSearchParams({}, { replace: true });
+    }, [searchParams, setSearchParams]);
 
     useEffect(() => {
         if (!details) return;

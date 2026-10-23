@@ -394,14 +394,18 @@ try
 }
 catch (Exception ex) when (ex is IOException or AggregateException)
 {
-    var message = ex is AggregateException aggregate
-        ? aggregate.GetBaseException().Message
-        : ex.Message;
-
-    Console.Error.WriteLine(
-        $"Не удалось занять порт: {message}. " +
-        "Закройте уже запущенный экземпляр API (netstat -ano | findstr :5084) и запустите снова.");
-    Environment.Exit(1);
+    if (ex is IOException io)
+    {
+        StartupFailureReporter.Report(io, Console.Error);
+    }
+    else
+    {
+        var message = ex is AggregateException aggregate
+            ? aggregate.GetBaseException().Message
+            : ex.Message;
+        Console.Error.WriteLine($"Не удалось запустить API: {message}");
+    }
+    Environment.ExitCode = 1;
 }
 
 // ============================================================

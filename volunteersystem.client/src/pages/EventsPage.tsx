@@ -7,6 +7,7 @@ import { reportsApi } from '../api/reports';
 import { exportCSV, exportExcel } from '../utils/export';
 import type { EventItem, EventCommentItem } from '../types';
 import { plural } from '../utils/format';
+import { filterEvents } from '../utils/filters';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import Modal from '../components/Modal';
@@ -132,10 +133,7 @@ export default function EventsPage() {
     const load = async () => {
         setLoading(true);
         try {
-            const params: Record<string, unknown> = {};
-            if (statusFilter) params.status = statusFilter;
-            if (search) params.search = search;
-            setItems(await eventsApi.getAll(params));
+            setItems(await eventsApi.getAll());
             if (isVolunteer) {
                 try {
                     const my = await assignmentsApi.my();
@@ -221,14 +219,7 @@ export default function EventsPage() {
     };
 
     const filtered = useMemo(() => {
-        let list = items;
-        if (typeFilter) list = list.filter(e => String(e.eventTypeId) === typeFilter);
-        if (search) {
-            const q = search.toLowerCase();
-            list = list.filter(e =>
-                e.eventName.toLowerCase().includes(q) || e.location.toLowerCase().includes(q)
-            );
-        }
+        const list = filterEvents(items, search, statusFilter, typeFilter);
         const sorted = [...list];
         switch (sort) {
             case 'date-asc':
@@ -250,7 +241,7 @@ export default function EventsPage() {
                 break;
         }
         return sorted;
-    }, [items, search, typeFilter, sort]);
+    }, [items, search, statusFilter, typeFilter, sort]);
 
     const handleSignUp = async (eventId: number) => {
         if (!user?.volunteerId) { toast.error('Профиль волонтёра не найден'); return; }

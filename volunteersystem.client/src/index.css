@@ -2782,30 +2782,141 @@ tbody tr.row-clickable {
 /* ============================================================
    Календарь мероприятий
    ============================================================ */
+.cal-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.cal-summary-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    box-shadow: var(--shadow-sm);
+}
+
+.cal-summary-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    border-radius: 12px;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+.cal-summary-value {
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cal-summary-event {
+    font-size: 14px;
+}
+
+.cal-summary-label {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cal-summary-next {
+    position: relative;
+    padding-right: 46px;
+}
+
+.cal-summary-arrow {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--text-2);
+    cursor: pointer;
+    transition: border-color .12s ease, color .12s ease, transform .12s ease;
+}
+
+.cal-summary-arrow:hover {
+    color: var(--primary);
+    border-color: var(--primary);
+    transform: translateY(-50%) translateX(1px);
+}
+
 .cal-wrap {
     display: flex;
-    gap: 16px;
+    gap: 18px;
     align-items: flex-start;
     flex-wrap: wrap;
 }
 
 .cal-main {
-    flex: 1 1 560px;
+    flex: 1 1 620px;
     min-width: 0;
+    padding: 18px;
+    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in srgb, var(--surface-2) 65%, var(--surface)) 100%);
 }
 
 .cal-side {
-    flex: 0 1 360px;
-    min-width: 300px;
+    flex: 0 1 370px;
+    min-width: 310px;
     position: sticky;
     top: 16px;
+    padding: 18px;
 }
 
 .cal-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.cal-month {
+    display: flex;
+    align-items: center;
     gap: 8px;
+}
+
+.cal-month-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 150px;
+    text-align: center;
+}
+
+.cal-month-name {
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+}
+
+.cal-month-year {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-3);
 }
 
 .cal-grid {
@@ -2815,59 +2926,95 @@ tbody tr.row-clickable {
 }
 
 .cal-dow {
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 
 .cal-dow-cell {
+    padding: 6px 0;
     text-align: center;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 10.5px;
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--text-3);
 }
 
+.cal-month-grid {
+    gap: 7px;
+}
+
 .cal-day {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    min-height: 86px;
-    padding: 6px;
-    border-radius: 12px;
+    gap: 5px;
+    min-height: 96px;
+    padding: 8px;
+    overflow: hidden;
     border: 1px solid var(--border);
-    background: var(--surface-2);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-2) 78%, transparent);
     cursor: pointer;
     text-align: left;
     font-family: inherit;
-    transition: border-color .12s ease, background .12s ease, transform .12s ease;
+    transition: border-color .12s ease, background .12s ease, transform .12s ease, box-shadow .12s ease;
 }
 
 .cal-day:hover {
-    border-color: var(--primary);
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 .cal-day.is-out {
-    opacity: 0.42;
+    opacity: 0.36;
+}
+
+.cal-day.is-weekend {
+    background: color-mix(in srgb, var(--surface-2) 62%, var(--primary) 4%);
 }
 
 .cal-day.is-today {
-    border-color: var(--primary);
-    background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+    border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+    background: color-mix(in srgb, var(--primary) 8%, var(--surface));
 }
 
 .cal-day.is-selected {
     border-color: var(--primary);
-    background: var(--surface);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
+    background: color-mix(in srgb, var(--primary) 11%, var(--surface));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 32%, transparent), var(--shadow-sm);
+}
+
+.cal-day-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    width: 100%;
 }
 
 .cal-daynum {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: 700;
     color: var(--text-2);
 }
 
 .cal-day.is-today .cal-daynum {
+    color: #fff;
+    background: var(--primary);
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+.cal-today-label {
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--primary);
 }
 
@@ -2875,71 +3022,280 @@ tbody tr.row-clickable {
     display: flex;
     flex-direction: column;
     gap: 3px;
+    width: 100%;
     overflow: hidden;
 }
 
 .cal-chip {
-    font-size: 10px;
-    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
     padding: 2px 5px;
+    border: 1px solid transparent;
     border-radius: 6px;
-    color: #fff;
-    font-weight: 600;
-    white-space: nowrap;
+    font-size: 9.5px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.cal-chip-dot {
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.cal-chip-label {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .cal-more {
-    font-size: 10px;
+    font-size: 9.5px;
     font-weight: 700;
     color: var(--text-3);
 }
 
 .cal-legend {
     display: flex;
+    align-items: center;
     gap: 14px;
     flex-wrap: wrap;
-    margin-top: 12px;
+    margin-top: 14px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
+}
+
+.cal-legend-title {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
 }
 
 .cal-legend-item {
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: 11.5px;
     color: var(--text-2);
 }
 
 .cal-legend-dot {
-    width: 9px;
-    height: 9px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
 }
 
+.cal-side-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cal-side-date {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cal-side-day {
+    font-size: 38px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--primary);
+}
+
+.cal-side-month {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.cal-side-weekday {
+    display: block;
+    margin-top: 1px;
+    font-size: 11px;
+    color: var(--text-3);
+    text-transform: capitalize;
+}
+
+.cal-side-subtitle {
+    margin: 8px 0 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+    color: var(--text-3);
+}
+
+.cal-agenda {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cal-agenda-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+}
+
+.cal-agenda-item:hover {
+    border-color: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.cal-agenda-time {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 42px;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.cal-agenda-time-end {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-3);
+}
+
+.cal-agenda-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.cal-agenda-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cal-agenda-meta {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: var(--text-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cal-agenda-foot {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--text-3);
+}
+
+.cal-agenda-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+}
+
+.cal-agenda-status span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+
+.cal-agenda-sep {
+    opacity: 0.5;
+}
+
+.cal-agenda-thumb {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    object-fit: cover;
+}
+
+@media (max-width: 1100px) {
+    .cal-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cal-summary-next {
+        grid-column: 1 / -1;
+    }
+}
+
 @media (max-width: 900px) {
+    .cal-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .cal-summary-next {
+        grid-column: auto;
+    }
+
     .cal-side {
         position: static;
         flex: 1 1 100%;
         min-width: 0;
     }
 
+    .cal-main {
+        padding: 14px;
+    }
+
     .cal-day {
-        min-height: 56px;
-        padding: 4px;
+        min-height: 62px;
+        padding: 5px;
         align-items: center;
+    }
+
+    .cal-day-head {
+        justify-content: center;
+    }
+
+    .cal-today-label {
+        display: none;
     }
 
     /* на мобильных чипы превращаются в цветные точки */
     .cal-chip {
-        font-size: 0;
         width: 7px;
         height: 7px;
         padding: 0;
+        border: 0;
         border-radius: 50%;
+        background: currentColor !important;
         flex: 0 0 auto;
+    }
+
+    .cal-chip-dot,
+    .cal-chip-label {
+        display: none;
     }
 
     .cal-chips {
@@ -3827,12 +4183,19 @@ tbody tr.row-clickable {
 
 .event-map {
     position: relative;
+    isolation: isolate;
     border-radius: var(--r-md);
     overflow: hidden;
     border: 1px solid var(--border);
     background: var(--surface-2);
     margin-bottom: 18px;
 }
+
+    .event-map-canvas {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+    }
 
     .event-map iframe {
         width: 100%;
@@ -3863,11 +4226,122 @@ tbody tr.row-clickable {
         color: var(--primary);
     }
 
+    .event-map .leaflet-container {
+        width: 100%;
+        height: 100%;
+        background: var(--surface-2);
+        font-family: inherit;
+        outline: none;
+    }
+
+    .event-map .leaflet-control-zoom {
+        border: 0;
+        box-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.55);
+    }
+
+        .event-map .leaflet-control-zoom a {
+            background: color-mix(in srgb, var(--surface) 92%, transparent);
+            color: var(--text-2);
+            border-color: var(--border);
+            backdrop-filter: blur(6px);
+        }
+
+            .event-map .leaflet-control-zoom a:hover {
+                background: var(--surface);
+                color: var(--primary);
+            }
+
+    .event-map .leaflet-control-attribution {
+        background: color-mix(in srgb, var(--surface) 82%, transparent);
+        color: var(--text-3);
+        font-size: 9.5px;
+        padding: 2px 6px;
+        border-radius: 6px 0 0 6px;
+        backdrop-filter: blur(6px);
+    }
+
+        .event-map .leaflet-control-attribution a {
+            color: var(--text-2);
+        }
+
+.event-map-marker {
+    background: transparent;
+    border: 0;
+}
+
+    .event-map-marker-ring {
+        position: absolute;
+        left: 50%;
+        top: 20px;
+        width: 58px;
+        height: 58px;
+        margin: -29px 0 0 -29px;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--primary) 24%, transparent);
+        animation: eventMapPulse 2.4s ease-out infinite;
+    }
+
+    .event-map-marker-pin {
+        position: absolute;
+        left: 50%;
+        top: 20px;
+        width: 40px;
+        height: 40px;
+        margin: -20px 0 0 -20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50% 50% 50% 4px;
+        transform: rotate(-45deg);
+        background: linear-gradient(135deg, var(--primary), #ffa14a);
+        border: 3px solid #fff;
+        box-shadow:
+            0 12px 26px -8px color-mix(in srgb, var(--primary) 70%, transparent),
+            0 4px 10px rgba(15, 23, 42, 0.25);
+        animation: eventMapDrop 0.5s cubic-bezier(0.2, 0.85, 0.3, 1.15) both;
+    }
+
+        .event-map-marker-pin svg {
+            transform: rotate(45deg);
+            color: #fff;
+            filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+        }
+
+@keyframes eventMapPulse {
+    0% {
+        transform: scale(0.55);
+        opacity: 0.75;
+    }
+
+    70% {
+        transform: scale(1.25);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1.25);
+        opacity: 0;
+    }
+}
+
+@keyframes eventMapDrop {
+    0% {
+        opacity: 0;
+        transform: rotate(-45deg) translateY(-14px) scale(0.86);
+    }
+
+    100% {
+        opacity: 1;
+        transform: rotate(-45deg) translateY(0) scale(1);
+    }
+}
+
 .event-map-bar {
     position: absolute;
     left: 8px;
     right: 8px;
     bottom: 8px;
+    z-index: 500;
     display: flex;
     gap: 8px;
     align-items: center;
@@ -5361,4 +5835,271 @@ tbody tr.row-clickable {
     a[href]::after {
         content: '';
     }
+}
+
+/* ============================================================
+   МЕДКНИЖКА — регистрация, профиль, карточки волонтёров
+   ============================================================ */
+
+.reg-medbook {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px dashed color-mix(in srgb, var(--primary) 45%, var(--border));
+    border-radius: var(--r-lg);
+    background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+}
+
+.reg-medbook-head {
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.reg-medbook-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.reg-medbook-title {
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text);
+}
+
+.reg-medbook-optional {
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--text-3);
+    border: 1px solid var(--border-2);
+    border-radius: 99px;
+    padding: 1px 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.reg-medbook-sub {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.5;
+    margin-top: 2px;
+}
+
+.reg-medbook-file {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.reg-medbook-file input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.reg-medbook-file-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 13px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--border-2);
+    background: var(--surface);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+    transition: all .15s ease;
+    white-space: nowrap;
+}
+
+.reg-medbook-file:hover .reg-medbook-file-btn {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.reg-medbook-file-name {
+    font-size: 12.5px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
+}
+
+/* карточка медкнижки в профиле */
+.profile-medbook {
+    margin-top: 14px;
+}
+
+.profile-medbook-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.profile-medbook-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border-radius: var(--r-md);
+}
+
+.profile-medbook-comment {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-2);
+}
+
+.profile-medbook-scan-row {
+    margin-top: 10px;
+    display: flex;
+}
+
+.profile-medbook-upload {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+/* статус «на проверке» в углу карточки волонтёра */
+.vcard-corner.is-pending {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+    border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
+/* ============================================================
+   РЕКОМЕНДАЦИИ МЕРОПРИЯТИЙ (дашборд волонтёра)
+   ============================================================ */
+
+.rec-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.rec-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+
+.rec-card:hover {
+    border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.rec-thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: var(--surface-2);
+}
+
+.rec-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.rec-body {
+    padding: 10px 12px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+}
+
+.rec-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rec-meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-3);
+    flex-wrap: wrap;
+}
+
+.rec-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.rec-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.rec-reasons .skill-chip {
+    font-size: 10px;
+    padding: 2px 7px;
+}
+
+.rec-foot {
+    padding: 6px 12px 12px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* ============================================================
+   КАЛЕНДАРЬ — мелкие штрихи
+   ============================================================ */
+
+.cal-agenda-thumb {
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+
+.cal-agenda-item:hover .cal-agenda-thumb {
+    transform: scale(1.07);
+    box-shadow: var(--shadow-sm);
+}
+
+.cal-day:active {
+    transform: translateY(0) scale(.985);
+}
+
+.cal-day.is-selected:hover {
+    transform: translateY(-1px);
 }

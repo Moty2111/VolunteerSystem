@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
+using System.Text.Json.Serialization;
 
 namespace VolunteerSystem.Server.Dtos.Auth;
 
@@ -34,4 +36,12 @@ public class RegisterRequest
     [Required(ErrorMessage = "Придумайте пароль")]
     [StringLength(256, MinimumLength = 6, ErrorMessage = "Пароль: минимум 6 символов")]
     public string Password { get; set; } = string.Empty;
+
+    /// <summary>Необязательно: дата действия медкнижки при регистрации.</summary>
+    public DateOnly? MedBookValidUntil { get; set; }
+
+    /// <summary>Необязательно: скан медкнижки при регистрации (PDF/JPG/PNG до 10 МБ).</summary>
+    /// <remarks>Файл передаётся только в multipart-форме; в JSON его сериализовать нельзя.</remarks>
+    [JsonIgnore]
+    public IFormFile? MedBookScan { get; set; }
 }

@@ -3,12 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Modal from '../components/Modal';
 import { Avatar, Badge, Button } from '../components/ui';
 import { skillsApi, type Skill, type VolunteerSkill } from '../api/skills';
+import { volunteersApi } from '../api/volunteers';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext';
 import { getLevel, getBadges } from '../utils/level';
 import { plural } from '../utils/format';
 import type { Volunteer } from '../types';
-import { Award, Plus, X, MapPin, Phone, Mail, Calendar, Check } from 'lucide-react';
+import { Award, Plus, X, MapPin, Phone, Mail, Calendar, Check, HeartPulse, Clock, Eye } from 'lucide-react';
 import { skillNameIcon, skillTone } from '../utils/skillLevels';
 
 /* иконка навыка по названию и цвет карточки — общие с страницей «Навыки» */
@@ -18,9 +19,10 @@ const toneForLevel = skillTone;
 interface Props {
     volunteer: Volunteer | null;
     onClose: () => void;
+    onVolunteerUpdated?: (v: Volunteer) => void;
 }
 
-export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
+export default function VolunteerProfileModal({ volunteer, onClose, onVolunteerUpdated }: Props) {
     const { user } = useAuth();
     const toast = useToast();
     const [volunteerSkills, setVolunteerSkills] = useState<VolunteerSkill[]>([]);
@@ -28,8 +30,15 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
     const [selectedSkill, setSelectedSkill] = useState<number>(0);
     const [year, setYear] = useState<number>(new Date().getFullYear());
     const [loading, setLoading] = useState(true);
+    const [medBookDate, setMedBookDate] = useState('');
+    const [verifying, setVerifying] = useState(false);
+    const [openingScan, setOpeningScan] = useState(false);
 
     const canEdit = user?.role === 'Администратор' || user?.role === 'Менеджер';
+
+    useEffect(() => {
+        if (volunteer) setMedBookDate(volunteer.medBookValidUntil || '');
+    }, [volunteer]);
 
     const load = async () => {
         if (!volunteer) return;
@@ -77,6 +86,44 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
         }
     };
 
+    const handleOpenScan = async () => {
+        if (!volunteer) return;
+        setOpeningScan(true);
+        try {
+            const blob = await volunteersApi.fetchMedBookScan(volunteer.volunteerId);
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank', 'noopener');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось открыть скан');
+        } finally {
+            setOpeningScan(false);
+        }
+    };
+
+    const handleVerify = async (approved: boolean) => {
+        if (!volunteer) return;
+        const comment = approved ? null : window.prompt('Причина отклонения медкнижки:');
+        if (!approved && comment === null) return;
+        setVerifying(true);
+        try {
+            const updated = await volunteersApi.verifyMedBook(volunteer.volunteerId, {
+                approved,
+                validUntil: medBookDate || null,
+                comment
+            });
+            setMedBookDate(updated.medBookValidUntil || '');
+            onVolunteerUpdated?.(updated);
+            toast.success(approved ? 'Медкнижка подтверждена' : 'Медкнижка отклонена');
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Ошибка');
+        } finally {
+            setVerifying(false);
+        }
+    };
+
     if (!volunteer) return null;
 
     const availableSkills = allSkills.filter(s =>
@@ -113,14 +160,23 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
             { level.label }
                 </span>
 {
-    volunteer.medBookValidUntil
-    ? <span className = "cool-tip tip-below"
+    volunteer.medBookStatus === 'Подтверждена'
+    ? <span className="cool-tip tip-below"
         data-tip = {`Медкнижка действует до ${volunteer.medBookValidUntil} — допускает участие в мероприятиях с повышенными требованиями.`}>
         <Badge variant="success" icon={<Check size={11} />}> медкнижка до {volunteer.medBookValidUntil} </Badge>
     </span>
-              : < span className = "cool-tip tip-below"
+    : volunteer.medBookStatus === 'На проверке'
+    ? <Badge variant="warning"> медкнижка на проверке </Badge>
+    : volunteer.medBookStatus === 'Отклонена'
+    ? <span className="cool-tip tip-below"
+        data-tip = {volunteer.medBookComment ? `Причина: ${volunteer.medBookComment}` : 'Медкнижка отклонена'}>
+        <Badge variant="danger"> медкнижка отклонена </Badge>
+    </span>
+    : volunteer.medBookStatus === 'Просрочена'
+    ? <Badge variant="danger"> медкнижка просрочена </Badge>
+    : <span className="cool-tip tip-below"
         data-tip = "У волонтёра нет медкнижки — участие в мероприятиях с повышенными требованиями ограничено.">
-        <Badge variant="danger"> нет медкнижки </Badge>
+        <Badge variant="muted"> нет медкнижки </Badge>
     </span>}
 {
     volunteer.isActive
@@ -155,6 +211,86 @@ export default function VolunteerProfileModal({ volunteer, onClose }: Props) {
                                     </div>
                                     </div>
                                     </div>
+
+{/* MEDBOOK */ }
+<div style={ { borderTop: '1px solid var(--border)', paddingTop: 20, marginBottom: 20 } }>
+    <h4 style={ {
+        fontFamily: 'var(--font-head)',
+        fontSize: 15,
+        fontWeight: 700,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 16
+    } }>
+        <HeartPulse size={18} style={{ color: 'var(--primary)' }} />
+        Медкнижка
+        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-3)', marginLeft: 'auto' }}>
+            {volunteer.medBookStatus || 'Не загружена'}
+        </span>
+    </h4>
+
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: 'var(--text-2)' }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Calendar size={13} /> Срок действия:{' '}
+                <strong style={{ color: 'var(--text)' }}>
+                    {volunteer.medBookValidUntil
+                        ? `до ${new Date(volunteer.medBookValidUntil).toLocaleDateString('ru-RU')}`
+                        : 'не указан'}
+                </strong>
+            </span>
+            {volunteer.medBookUploadedAt && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={13} /> Скан загружен{' '}
+                    {new Date(volunteer.medBookUploadedAt).toLocaleDateString('ru-RU')}
+                </span>
+            )}
+        </div>
+
+        {volunteer.medBookComment && (
+            <div style={{
+                padding: '10px 12px',
+                background: 'var(--surface-2)',
+                borderRadius: 'var(--r-md)',
+                fontSize: 12.5,
+                lineHeight: 1.5
+            }}>
+                <strong style={{ color: 'var(--text)' }}>Комментарий:</strong>{' '}
+                {volunteer.medBookComment}
+            </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+            {volunteer.medBookScanPath && (
+                <Button variant="secondary" icon={<Eye size={14} />} onClick={handleOpenScan} disabled={openingScan}>
+                    {openingScan ? 'Открываем…' : 'Открыть скан'}
+                </Button>
+            )}
+
+            {canEdit && volunteer.medBookStatus === 'На проверке' && (
+                <>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                            type="date"
+                            className="input"
+                            style={{ width: 160 }}
+                            value={medBookDate}
+                            onChange={e => setMedBookDate(e.target.value)}
+                            aria-label="Дата действия медкнижки"
+                        />
+                        <Button variant="primary" icon={<Check size={14} />} onClick={() => handleVerify(true)} disabled={verifying}>
+                            Подтвердить
+                        </Button>
+                        <Button variant="danger" onClick={() => handleVerify(false)} disabled={verifying}>
+                            Отклонить
+                        </Button>
+                    </div>
+                </>
+            )}
+        </div>
+    </div>
+</div>
 
 {/* SKILLS */ }
 <div style={ { borderTop: '1px solid var(--border)', paddingTop: 20 } }>

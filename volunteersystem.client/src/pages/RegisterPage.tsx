@@ -1,6 +1,6 @@
 ﻿import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Sparkles, Check } from 'lucide-react';
+import { Eye, EyeOff, Sparkles, Check, HeartPulse, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { authApi } from '../api/auth';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,8 @@ export default function RegisterPage() {
   });
   const [showPw, setShowPw] = useState(false);
   const [agree, setAgree] = useState(true);
+  const [medBookFile, setMedBookFile] = useState<File | null>(null);
+  const [medBookValidUntil, setMedBookValidUntil] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -23,8 +25,10 @@ export default function RegisterPage() {
   const navigate = useNavigate();
 
   const update = (field: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement>) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setError('');
       setForm({ ...form, [field]: e.target.value });
+    };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,15 +37,32 @@ export default function RegisterPage() {
       setError('Необходимо согласие на обработку персональных данных');
       return;
     }
+    if (!form.city.trim()) {
+      setError('Укажите город');
+      return;
+    }
+    if (!form.fullName.trim()) {
+      setError('Укажите ФИО');
+      return;
+    }
     setLoading(true);
     try {
-      const res = await authApi.register(form);
+      const res = await authApi.register({
+        ...form,
+        city: form.city.trim(),
+        medBookValidUntil: medBookValidUntil || null,
+        medBookScan: medBookFile
+      });
       login(res);
       toast.success('Регистрация прошла успешно!');
       navigate('/dashboard');
     } catch (err: unknown) {
-      const e2 = err as { response?: { data?: { message?: string } } };
-      setError(e2.response?.data?.message || 'Ошибка регистрации');
+      const e2 = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
+      const serverErrors = e2.response?.data?.errors;
+      const firstServerError = serverErrors
+        ? Object.values(serverErrors).flat()[0]
+        : undefined;
+      setError(firstServerError || e2.response?.data?.message || 'Ошибка регистрации');
     } finally {
       setLoading(false);
     }
@@ -155,6 +176,46 @@ export default function RegisterPage() {
             <input type="email" className="input" value={form.email} onChange={update('email')} required />
           </div>
 
+          {/* Медкнижка — необязательный блок */}
+          <div className="reg-medbook">
+            <div className="reg-medbook-head">
+              <span className="reg-medbook-icon"><HeartPulse size={16} /></span>
+              <div>
+                <div className="reg-medbook-title">Медкнижка <span className="reg-medbook-optional">необязательно</span></div>
+                <div className="reg-medbook-sub">
+                  Скан откроет доступ к социальным, благотворительным и образовательным мероприятиям.
+                  Скан можно загрузить и позже — в профиле.
+                </div>
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="field">
+                <label className="field-label">Действительна до</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={medBookValidUntil}
+                  onChange={e => { setError(''); setMedBookValidUntil(e.target.value); }}
+                />
+              </div>
+              <div className="field">
+                <label className="field-label">Скан (PDF/JPG/PNG до 10 МБ)</label>
+                <label className="reg-medbook-file">
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={e => { setError(''); setMedBookFile(e.target.files?.[0] ?? null); }}
+                  />
+                  <span className="reg-medbook-file-btn"><Upload size={14} /> Выбрать файл</span>
+                  <span className="reg-medbook-file-name">
+                    {medBookFile ? medBookFile.name : 'файл не выбран'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div className="form-row">
             <div className="field">
               <label className="field-label">Логин *</label>
@@ -203,7 +264,7 @@ export default function RegisterPage() {
             }}>
               {agree && <Check size={12} color="#fff" />}
             </span>
-            <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ display: 'none' }} />
+            <input type="checkbox" checked={agree} onChange={e => { setError(''); setAgree(e.target.checked); }} style={{ display: 'none' }} />
             <span>Я согласен(-на) на обработку персональных данных в соответствии с ФЗ-152 и политикой конфиденциальности</span>
           </label>
 

@@ -9,5 +9,9 @@
     "dev:web": "npm --prefix volunteersystem.client run dev:web",
     "build": "npm --prefix volunteersystem.client run build",
     "install:all": "npm --prefix volunteersystem.client install"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/server-filesystem": "^1.0.0",
+    "@modelcontextprotocol/server-memory": "^1.0.0"
   }
 }

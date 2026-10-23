@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 using VolunteerSystem.Server.Data;
 using VolunteerSystem.Server.Dtos.Volunteers;
 using VolunteerSystem.Server.Models;
+using VolunteerSystem.Server.Services;
 
 namespace VolunteerSystem.Server.Controllers;
 
@@ -13,8 +16,13 @@ namespace VolunteerSystem.Server.Controllers;
 public class VolunteersController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IWebHostEnvironment _env;
 
-    public VolunteersController(AppDbContext db) => _db = db;
+    public VolunteersController(AppDbContext db, IWebHostEnvironment env)
+    {
+        _db = db;
+        _env = env;
+    }
 
     // GET: /api/volunteers?city=Москва&active=true&search=иванов
     [HttpGet]
@@ -85,6 +93,8 @@ public class VolunteersController : ControllerBase
             email = email,
             city = dto.City.Trim(),
             med_book_valid_until = dto.MedBookValidUntil,
+            // Менеджер создал волонтёра и сразу указал дату медкнижки — считаем подтверждённой
+            med_book_status = dto.MedBookValidUntil.HasValue ? "Подтверждена" : "Не загружена",
             personal_data_consent = dto.PersonalDataConsent,
             is_active = true,
             created_at = DateTime.Now
@@ -122,7 +132,10 @@ public class VolunteersController : ControllerBase
         v.full_name = dto.FullName.Trim();
         v.phone = dto.Phone.Trim();
         v.city = dto.City.Trim();
-        v.med_book_valid_until = dto.MedBookValidUntil;
+
+        // Дату медкнижки меняют только администратор/менеджер (волонтёр — через загрузку скана)
+        if (isAdminOrManager)
+            v.med_book_valid_until = dto.MedBookValidUntil;
 
         // Статус активности меняют только администратор и менеджер
         if (isAdminOrManager)
@@ -149,11 +162,119 @@ public class VolunteersController : ControllerBase
         return NoContent();
     }
 
+    // === Медкнижка ===
+
+    // POST: /api/volunteers/5/medbook — загрузка скана (волонтёр сам или админ/менеджер)
+    [HttpPost("{id:int}/medbook")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<ActionResult<VolunteerDto>> UploadMedBook(int id, [FromForm] UploadMedBookDto dto, CancellationToken ct)
+    {
+        var isAdminOrManager = User.IsInRole("Администратор") || User.IsInRole("Менеджер");
+        if (!isAdminOrManager && GetOwnVolunteerId() != id)
+            return Forbid();
+
+        var v = await _db.Volunteers.FirstOrDefaultAsync(x => x.volunteer_id == id, ct);
+        if (v is null) return NotFound(new { message = "Волонтёр не найден" });
+
+        if (dto.File is null)
+            return BadRequest(new { message = "Выберите файл скана медкнижки" });
+
+        if (!MedBookStorage.TrySaveScan(_env, dto.File, out var fileName, out var error))
+            return BadRequest(new { message = error });
+
+        // Удаляем старый скан
+        if (!string.IsNullOrEmpty(v.med_book_scan_path))
+        {
+            var oldPath = MedBookStorage.GetFullPath(_env, v.med_book_scan_path);
+            if (System.IO.File.Exists(oldPath))
+            {
+                try { System.IO.File.Delete(oldPath); } catch { /* не критично */ }
+            }
+        }
+
+        v.med_book_scan_path = fileName;
+        v.med_book_uploaded_at = DateTime.Now;
+        v.med_book_status = "На проверке";
+        v.med_book_verified_at = null;
+        v.med_book_verified_by = null;
+        v.med_book_notes = string.Empty;
+        if (dto.ValidUntil is { } until)
+            v.med_book_valid_until = until;
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(ToDto(v));
+    }
+
+    // GET: /api/volunteers/5/medbook/scan — скачивание скана
+    [HttpGet("{id:int}/medbook/scan")]
+    public async Task<IActionResult> GetMedBookScan(int id, CancellationToken ct)
+    {
+        var isAdminOrManager = User.IsInRole("Администратор") || User.IsInRole("Менеджер");
+        if (!isAdminOrManager && GetOwnVolunteerId() != id)
+            return Forbid();
+
+        var v = await _db.Volunteers.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.volunteer_id == id, ct);
+        if (v is null) return NotFound(new { message = "Волонтёр не найден" });
+
+        if (string.IsNullOrEmpty(v.med_book_scan_path))
+            return NotFound(new { message = "Скан медкнижки не загружен" });
+
+        var fullPath = MedBookStorage.GetFullPath(_env, v.med_book_scan_path);
+        if (!System.IO.File.Exists(fullPath))
+            return NotFound(new { message = "Файл скана не найден" });
+
+        return PhysicalFile(
+            fullPath,
+            MedBookStorage.GetContentType(v.med_book_scan_path),
+            $"medbook_{id}{Path.GetExtension(v.med_book_scan_path)}");
+    }
+
+    // POST: /api/volunteers/5/medbook/verify — решение менеджера/админа
+    [HttpPost("{id:int}/medbook/verify")]
+    [Authorize(Roles = "Администратор,Менеджер")]
+    public async Task<ActionResult<VolunteerDto>> VerifyMedBook(int id, [FromBody] VerifyMedBookRequest dto, CancellationToken ct)
+    {
+        var v = await _db.Volunteers.FirstOrDefaultAsync(x => x.volunteer_id == id, ct);
+        if (v is null) return NotFound(new { message = "Волонтёр не найден" });
+
+        if (dto.ValidUntil is { } until)
+            v.med_book_valid_until = until;
+
+        if (dto.Approved)
+        {
+            if (v.med_book_valid_until is null)
+                return BadRequest(new { message = "Укажите дату действия медкнижки" });
+            if (v.med_book_valid_until.Value < DateOnly.FromDateTime(DateTime.Today))
+                return BadRequest(new { message = "Дата окончания медкнижки уже в прошлом" });
+
+            v.med_book_status = "Подтверждена";
+            v.med_book_verified_at = DateTime.Now;
+            v.med_book_verified_by = GetUserId();
+            v.med_book_notes = string.IsNullOrWhiteSpace(dto.Comment) ? null : dto.Comment.Trim();
+        }
+        else
+        {
+            v.med_book_status = "Отклонена";
+            v.med_book_verified_at = null;
+            v.med_book_verified_by = null;
+            v.med_book_notes = string.IsNullOrWhiteSpace(dto.Comment)
+                ? "Отклонено без пояснения"
+                : dto.Comment.Trim();
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(ToDto(v));
+    }
+
     // === Helpers ===
 
     /// <summary>id волонтёра из токена; 0 — если такого claim нет или он неверен.</summary>
     private int GetOwnVolunteerId() =>
         int.TryParse(User.FindFirst("VolunteerId")?.Value, out var id) ? id : 0;
+
+    private int? GetUserId() =>
+        int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : null;
 
     private static VolunteerDto ToDto(Volunteer v) => new()
     {
@@ -164,6 +285,11 @@ public class VolunteersController : ControllerBase
         Email = v.email,
         City = v.city,
         MedBookValidUntil = v.med_book_valid_until,
+        MedBookStatus = v.med_book_status,
+        MedBookScanPath = v.med_book_scan_path,
+        MedBookUploadedAt = v.med_book_uploaded_at,
+        MedBookVerifiedAt = v.med_book_verified_at,
+        MedBookComment = v.med_book_notes,
         PersonalDataConsent = v.personal_data_consent,
         IsActive = v.is_active,
         CreatedAt = v.created_at

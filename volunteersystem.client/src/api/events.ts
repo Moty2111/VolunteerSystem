@@ -15,5 +15,8 @@ export const eventsApi = {
         api.put(`/events/${id}`, data).then(r => r.data),
 
     remove: (id: number) =>
-        api.delete(`/events/${id}`).then(r => r.data)
+        api.delete(`/events/${id}`).then(r => r.data),
+
+    recommended: () =>
+        api.get<RecommendedEventItem[]>('/events/recommended').then(r => r.data)
 };

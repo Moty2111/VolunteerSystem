@@ -101,14 +101,48 @@ public class AssignmentsController : ControllerBase
     // POST: /api/assignments
     // ============================================================
     [HttpPost]
-    [Authorize(Roles = "Администратор,Менеджер")]
     public async Task<ActionResult<AssignmentDto>> Create([FromBody] CreateAssignmentDto dto, CancellationToken ct)
     {
+        var isVolunteer = User.IsInRole("Волонтёр");
+
+        if (isVolunteer)
+        {
+            if (!int.TryParse(User.FindFirst("VolunteerId")?.Value, out var ownVolunteerId))
+                return Forbid();
+
+            if (dto.VolunteerId != ownVolunteerId)
+                return Forbid();
+
+            var participantRoleId = await _db.Roles
+                .Where(r => r.role_name == "Участник")
+                .Select(r => (int?)r.role_id)
+                .FirstOrDefaultAsync(ct);
+
+            if (participantRoleId is null)
+                return BadRequest(new { message = "Роль «Участник» не найдена" });
+
+            dto.RoleId = participantRoleId.Value;
+        }
+
         if (!await _db.Volunteers.AnyAsync(v => v.volunteer_id == dto.VolunteerId, ct))
             return BadRequest(new { message = "Волонтёр не найден" });
 
-        if (!await _db.Events.AnyAsync(e => e.event_id == dto.EventId, ct))
+        var ev = await _db.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e => e.event_id == dto.EventId, ct);
+
+        if (ev is null)
             return BadRequest(new { message = "Мероприятие не найдено" });
+
+        if (isVolunteer)
+        {
+            if (ev.status == "Отменено" || ev.status == "Завершено" || ev.date_end < DateTime.Now)
+                return BadRequest(new { message = "Запись на это мероприятие закрыта" });
+
+            if (await _db.Assignments.AnyAsync(
+                    a => a.volunteer_id == dto.VolunteerId && a.event_id == dto.EventId, ct))
+                return BadRequest(new { message = "Вы уже записаны на это мероприятие" });
+        }
 
         if (!await _db.Roles.AnyAsync(r => r.role_id == dto.RoleId, ct))
             return BadRequest(new { message = "Роль не найдена" });

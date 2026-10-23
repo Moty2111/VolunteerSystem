@@ -10,7 +10,7 @@ import Modal from '../components/Modal';
 import { Avatar, Badge, EmptyState, Skeleton, ViewToggle, useViewMode } from '../components/ui';
 import { IllHands } from '../components/illustrations';
 import {
-    Plus, Trash2, CheckSquare, Check, Clock, Search, Filter
+    Plus, Trash2, CheckSquare, Check, Clock, Search, Filter, ArrowDownUp
 } from 'lucide-react';
 
 const ROLES = [
@@ -23,6 +23,14 @@ const ROLES = [
 ];
 
 type StatusFilter = 'all' | 'pending' | 'confirmed';
+type SortKey = 'hours-desc' | 'date-asc' | 'date-desc' | 'name';
+
+const SORT_LABELS: Record<SortKey, string> = {
+    'hours-desc': 'сначала больше часов',
+    'date-asc': 'сначала ранние',
+    'date-desc': 'сначала поздние',
+    name: 'по волонтёру'
+};
 
 export default function AssignmentsPage() {
     const { user } = useAuth();
@@ -35,6 +43,7 @@ export default function AssignmentsPage() {
     const [showForm, setShowForm] = useState(false);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [search, setSearch] = useState('');
+    const [sort, setSort] = useState<SortKey>('hours-desc');
     const [view, setView] = useViewMode('assignments');
 
     const [form, setForm] = useState({ volunteerId: 0, eventId: 0, roleId: 6 });
@@ -75,8 +84,30 @@ export default function AssignmentsPage() {
                 (a.roleName || '').toLowerCase().includes(q)
             );
         }
-        return list;
-    }, [items, statusFilter, search]);
+
+        const dateValue = (a: Assignment) => {
+            const time = new Date(a.eventDateStart).getTime();
+            return Number.isFinite(time) ? time : 0;
+        };
+        const hoursValue = (a: Assignment) => Number(a.hoursActual ?? 0);
+
+        return [...list].sort((a, b) => {
+            switch (sort) {
+                case 'date-asc':
+                    return dateValue(a) - dateValue(b) || b.assignmentId - a.assignmentId;
+                case 'date-desc':
+                    return dateValue(b) - dateValue(a) || b.assignmentId - a.assignmentId;
+                case 'name':
+                    return a.volunteerName.localeCompare(b.volunteerName, 'ru') ||
+                        dateValue(a) - dateValue(b);
+                case 'hours-desc':
+                default:
+                    return hoursValue(b) - hoursValue(a) ||
+                        dateValue(a) - dateValue(b) ||
+                        b.assignmentId - a.assignmentId;
+            }
+        });
+    }, [items, statusFilter, search, sort]);
 
     const counts = useMemo(() => ({
         all: items.length,
@@ -149,7 +180,7 @@ export default function AssignmentsPage() {
         <div>
         <h1 className="page-title" > Назначения </h1>
             < p className = "page-subtitle" >
-            { loading? 'Загрузка...': `${counts.all} назначений · ${counts.pending} ожидают подтверждения` }
+            { loading? 'Загрузка...': `${counts.all} назначений · ${counts.pending} ожидают подтверждения · сортировка: ${SORT_LABELS[sort]}` }
                 </p>
                 </div>
     {
@@ -190,6 +221,20 @@ className = "input"
     onChange = { e => setSearch(e.target.value) }
     style = {{ minWidth: 260 }}
         />
+        <div className="sort-group">
+            <ArrowDownUp size={14} />
+            <select
+                className="select"
+                value={sort}
+                onChange={e => setSort(e.target.value as SortKey)}
+                aria-label="Сортировка назначений"
+            >
+                <option value="hours-desc">Сначала больше часов</option>
+                <option value="date-asc">Сначала ранние</option>
+                <option value="date-desc">Сначала поздние</option>
+                <option value="name">По волонтёру</option>
+            </select>
+        </div>
         <ViewToggle view = { view } onChange = { setView } label = "Вид списка назначений" />
     </div>
 

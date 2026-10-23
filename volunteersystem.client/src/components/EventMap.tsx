@@ -1,91 +1,171 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { MapPin, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { geocodeAddress, type GeoPoint } from '../utils/geocode';
 
 interface Props {
     address: string;
     height?: number;
 }
 
-interface Geo {
-    lat: number;
-    lon: number;
-    display_name?: string;
-}
+const markerIcon = L.divIcon({
+    className: 'event-map-marker',
+    html:
+        '<span class="event-map-marker-ring"></span>' +
+        '<span class="event-map-marker-pin">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">' +
+        '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>' +
+        '</svg></span>',
+    iconSize: [44, 50],
+    iconAnchor: [22, 48]
+});
 
-/**
- * Настоящая карта (OpenStreetMap) с меткой места мероприятия.
- * Координаты ищутся через Nominatim по адресу/месту,
- * кэшируются в sessionStorage, чтобы не дёргать сервис повторно.
- */
+const TILE_LAYERS: Array<{ url: string; opts: Record<string, unknown> }> = [
+    {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        opts: { subdomains: 'abc', maxZoom: 19 }
+    },
+    {
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        opts: { subdomains: 'abcd', maxZoom: 20 }
+    }
+];
+
 export default function EventMap({ address, height = 260 }: Props) {
-    const [geo, setGeo] = useState<Geo | null>(null);
+    const [geo, setGeo] = useState<GeoPoint | null>(null);
     const [loading, setLoading] = useState(true);
     const [failed, setFailed] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!address) {
+        let cancelled = false;
+        setGeo(null);
+        setFailed(false);
+        setLoading(true);
+
+        // address может быть не задан (модалка ещё не открылась) — не роняем страницу
+        if (!address || !address.trim()) {
             setLoading(false);
             setFailed(true);
             return;
         }
 
-        let cancelled = false;
-        const key = `geo:${address.toLowerCase().trim()}`;
-        const cached = sessionStorage.getItem(key);
-
-        const apply = (g: Geo | null) => {
-            if (cancelled) return;
-            if (g) {
-                setGeo(g);
-                setFailed(false);
-            } else {
-                setFailed(true);
-            }
-            setLoading(false);
-        };
-
-        if (cached) {
-            try {
-                apply(JSON.parse(cached) as Geo);
-                return () => { cancelled = true; };
-            } catch { sessionStorage.removeItem(key); }
-        }
-
-        setLoading(true);
-        const queries = [address, `${address}, Россия`];
-        (async () => {
-            for (const q of queries) {
-                try {
-                    const url =
-                        `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ru&q=${encodeURIComponent(q)}`;
-                    const res = await fetch(url);
-                    if (!res.ok) continue;
-                    const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
-                    if (data.length > 0) {
-                        const g: Geo = {
-                            lat: Number(data[0].lat),
-                            lon: Number(data[0].lon),
-                            display_name: data[0].display_name
-                        };
-                        sessionStorage.setItem(key, JSON.stringify(g));
-                        apply(g);
-                        return;
-                    }
-                } catch { /* пробуем следующий вариант */ }
-            }
-            apply(null);
-        })();
+        geocodeAddress(address)
+            .then(point => {
+                if (cancelled) return;
+                if (point) setGeo(point);
+                else setFailed(true);
+            })
+            .catch(() => {
+                if (!cancelled) setFailed(true);
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
 
         return () => { cancelled = true; };
     }, [address]);
 
-    const yandexLink = `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`;
+    useEffect(() => {
+        const container = containerRef.current;
+        if (loading || !geo || !container) return;
+
+        let map: L.Map | null = null;
+        let tileLayer: L.TileLayer | null = null;
+        let attempts = 0;
+        let timer = 0;
+        let frame = 0;
+        let stopped = false;
+
+        const initMap = () => {
+            if (stopped || !container || !geo) return;
+
+            // Модалка анимируется: на первых кадрах высота контейнера 0.
+            // Ждём, пока появится реальная высота, и лишь потом создаём карту.
+            const heightPx = container.clientHeight || container.getBoundingClientRect().height;
+            if (heightPx < 10) {
+                if (attempts++ < 30) {
+                    frame = requestAnimationFrame(initMap);
+                    return;
+                }
+                setFailed(true);
+                return;
+            }
+
+            try {
+                map = L.map(container, {
+                    center: [geo.lat, geo.lon],
+                    zoom: geo.zoom,
+                    zoomControl: true,
+                    scrollWheelZoom: false,
+                    attributionControl: false
+                });
+
+                L.control.attribution({ position: 'topright', prefix: false }).addTo(map);
+
+                const addTiles = (index: number) => {
+                    if (stopped || !map) return;
+                    const src = TILE_LAYERS[index];
+                    tileLayer = L.tileLayer(src.url, {
+                        ...src.opts,
+                        attribution:
+                            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+                    });
+                    tileLayer.on('tileerror', () => {
+                        // Подложка не загрузилась — пробуем следующего провайдера
+                        if (TILE_LAYERS[index + 1] && !stopped) {
+                            tileLayer?.remove();
+                            addTiles(index + 1);
+                        }
+                    });
+                    tileLayer.addTo(map);
+                };
+                addTiles(0);
+
+                L.marker([geo.lat, geo.lon], {
+                    icon: markerIcon,
+                    title: address,
+                    alt: address,
+                    keyboard: false
+                }).addTo(map);
+
+                const resizeObserver = new ResizeObserver(() => map?.invalidateSize());
+                resizeObserver.observe(container);
+                frame = requestAnimationFrame(() => map?.invalidateSize());
+                timer = window.setTimeout(() => map?.invalidateSize(), 260);
+
+                cleanup = () => {
+                    cancelAnimationFrame(frame);
+                    window.clearTimeout(timer);
+                    resizeObserver.disconnect();
+                    map?.remove();
+                    map = null;
+                };
+            } catch {
+                setFailed(true);
+            }
+        };
+
+        let cleanup: () => void = () => {};
+        initMap();
+
+        return () => {
+            stopped = true;
+            cancelAnimationFrame(frame);
+            window.clearTimeout(timer);
+            cleanup();
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [geo, address, loading]);
+
+    const yandexLink = `https://yandex.ru/maps/?text=${encodeURIComponent(address || '')}`;
 
     if (loading) {
         return (
             <div className="event-map loading" style={{ height }}>
                 <Loader2 size={22} className="spin" />
-                <span>Ищем место на карте…</span>
+                <span>Загружаем карту…</span>
             </div>
         );
     }
@@ -102,20 +182,13 @@ export default function EventMap({ address, height = 260 }: Props) {
         );
     }
 
-    const dLat = 0.006;
-    const dLon = 0.01;
-    const bbox = [geo.lon - dLon, geo.lat - dLat, geo.lon + dLon, geo.lat + dLat].join(',');
-    const osmUrl =
-        `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${geo.lat},${geo.lon}`;
-    const osmLink = `https://www.openstreetmap.org/?mlat=${geo.lat}&mlon=${geo.lon}#map=16/${geo.lat}/${geo.lon}`;
-
     return (
         <div className="event-map" style={{ height }}>
-            <iframe title="Карта мероприятия" src={osmUrl} loading="lazy" />
+            <div ref={containerRef} className="event-map-canvas" />
             <div className="event-map-bar">
-                <span className="event-map-pin"><MapPin size={13} /> {geo.display_name || address}</span>
-                <a href={osmLink} target="_blank" rel="noopener noreferrer">
-                    OpenStreetMap <ExternalLink size={12} />
+                <span className="event-map-pin"><MapPin size={13} /> {address}</span>
+                <a href={yandexLink} target="_blank" rel="noopener noreferrer">
+                    Яндекс.Карты <ExternalLink size={12} />
                 </a>
             </div>
         </div>

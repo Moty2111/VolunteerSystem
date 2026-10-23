@@ -10,7 +10,8 @@ import { getLevel } from '../utils/level';
 import { plural } from '../utils/format';
 import {
     User, Mail, Phone, MapPin, Save, Lock, ShieldCheck, AtSign, CalendarDays,
-    Clock, CalendarCheck, Sparkles, Award, Activity, HeartPulse, BadgeCheck
+    Clock, CalendarCheck, Sparkles, Award, Activity, HeartPulse, BadgeCheck,
+    Upload, Eye
 } from 'lucide-react';
 import type { Volunteer, Assignment } from '../types';
 
@@ -28,9 +29,13 @@ export default function ProfilePage() {
         fullName: '',
         email: '',
         phone: '',
-        city: '',
-        medBookValidUntil: ''
+        city: ''
     });
+
+    const [medBookFile, setMedBookFile] = useState<File | null>(null);
+    const [medBookDate, setMedBookDate] = useState('');
+    const [uploadingMedBook, setUploadingMedBook] = useState(false);
+    const [openingScan, setOpeningScan] = useState(false);
 
     const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
 
@@ -47,9 +52,9 @@ export default function ProfilePage() {
                     fullName: v.fullName,
                     email: v.email,
                     phone: v.phone,
-                    city: v.city,
-                    medBookValidUntil: v.medBookValidUntil || ''
+                    city: v.city
                 });
+                setMedBookDate(v.medBookValidUntil || '');
             } catch {
                 toast.error('Не удалось загрузить профиль');
             } finally {
@@ -103,7 +108,6 @@ export default function ProfilePage() {
                 email: form.email.trim(),
                 phone: form.phone.trim(),
                 city: form.city.trim(),
-                medBookValidUntil: form.medBookValidUntil || null,
                 isActive: volunteer.isActive
             });
             toast.success('Профиль сохранён');
@@ -116,8 +120,7 @@ export default function ProfilePage() {
         }
     };
 
-    const handleChangePassword = async (e: FormEvent) => {
-        e.preventDefault();
+    const handleChangePassword = async (e: FormEvent) => {        e.preventDefault();
         if (pwForm.next !== pwForm.confirm) {
             toast.error('Пароли не совпадают');
             return;
@@ -139,6 +142,47 @@ export default function ProfilePage() {
             toast.error(err.response?.data?.message || 'Не удалось сменить пароль');
         } finally {
             setChangingPw(false);
+        }
+    };
+
+    // ---------- Медкнижка ----------
+
+    const handleUploadMedBook = async () => {
+        if (!volunteer) return;
+        if (!medBookFile) {
+            toast.error('Выберите файл скана');
+            return;
+        }
+        setUploadingMedBook(true);
+        try {
+            const fd = new FormData();
+            fd.append('file', medBookFile);
+            if (medBookDate) fd.append('validUntil', medBookDate);
+            const updated = await volunteersApi.uploadMedBook(volunteer.volunteerId, fd);
+            setVolunteer(updated);
+            setMedBookFile(null);
+            toast.success('Скан отправлен на проверку');
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Ошибка загрузки скана');
+        } finally {
+            setUploadingMedBook(false);
+        }
+    };
+
+    const handleOpenScan = async () => {
+        if (!volunteer) return;
+        setOpeningScan(true);
+        try {
+            const blob = await volunteersApi.fetchMedBookScan(volunteer.volunteerId);
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank', 'noopener');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось открыть скан');
+        } finally {
+            setOpeningScan(false);
         }
     };
 
@@ -306,13 +350,40 @@ export default function ProfilePage() {
                             <span className="level-dot" />
                             {level.label}
                         </span>
-                        {volunteer.medBookValidUntil ? (
+                        {volunteer.medBookStatus === 'Подтверждена' ? (
                             <span
                                 className="cool-tip"
-                                data-tip={`Медкнижка действует до ${new Date(volunteer.medBookValidUntil).toLocaleDateString('ru-RU')} — открывает доступ к социальным, благотворительным и образовательным мероприятиям.`}
+                                data-tip={`Медкнижка действует до ${new Date(volunteer.medBookValidUntil!).toLocaleDateString('ru-RU')} — открывает доступ к социальным, благотворительным и образовательным мероприятиям.`}
                             >
                                 <Badge variant="success" icon={<HeartPulse size={12} />}>
-                                    медкнижка до {volunteer.medBookValidUntil}
+                                    медкнижка подтверждена · до {volunteer.medBookValidUntil}
+                                </Badge>
+                            </span>
+                        ) : volunteer.medBookStatus === 'На проверке' ? (
+                            <span
+                                className="cool-tip"
+                                data-tip="Скан медкнижки отправлен на проверку. Обычно это занимает не больше дня."
+                            >
+                                <Badge variant="warning" icon={<Clock size={12} />}>
+                                    медкнижка на проверке
+                                </Badge>
+                            </span>
+                        ) : volunteer.medBookStatus === 'Отклонена' ? (
+                            <span
+                                className="cool-tip"
+                                data-tip={volunteer.medBookComment ? `Причина: ${volunteer.medBookComment}` : 'Медкнижка отклонена — загрузите корректный скан.'}
+                            >
+                                <Badge variant="danger" icon={<HeartPulse size={12} />}>
+                                    медкнижка отклонена
+                                </Badge>
+                            </span>
+                        ) : volunteer.medBookStatus === 'Просрочена' ? (
+                            <span
+                                className="cool-tip"
+                                data-tip="Срок действия медкнижки истёк — продлите её или загрузите новый скан."
+                            >
+                                <Badge variant="danger" icon={<HeartPulse size={12} />}>
+                                    медкнижка просрочена
                                 </Badge>
                             </span>
                         ) : (
@@ -320,7 +391,7 @@ export default function ProfilePage() {
                                 className="cool-tip"
                                 data-tip="Медкнижки нет — участие в мероприятиях с повышенными требованиями к здоровью будет ограничено."
                             >
-                                <Badge variant="danger" icon={<HeartPulse size={12} />}>нет медкнижки</Badge>
+                                <Badge variant="muted" icon={<HeartPulse size={12} />}>нет медкнижки</Badge>
                             </span>
                         )}
                         <Badge variant={volunteer.isActive ? 'success' : 'muted'}>
@@ -382,6 +453,129 @@ export default function ProfilePage() {
                 </div>
             )}
 
+            {/* Медкнижка */}
+            <div className="card profile-medbook">
+                <div className="profile-medbook-head">
+                    <h3 className="section-title" style={{ marginBottom: 0 }}>
+                        <HeartPulse size={18} className="section-title-icon" />
+                        Медкнижка
+                    </h3>
+                    {(() => {
+                        const s = volunteer.medBookStatus;
+                        if (s === 'Подтверждена')
+                            return <Badge variant="success" icon={<HeartPulse size={12} />}>Подтверждена</Badge>;
+                        if (s === 'На проверке')
+                            return <Badge variant="warning" icon={<Clock size={12} />}>На проверке</Badge>;
+                        if (s === 'Отклонена')
+                            return <Badge variant="danger" icon={<HeartPulse size={12} />}>Отклонена</Badge>;
+                        if (s === 'Просрочена')
+                            return <Badge variant="danger" icon={<HeartPulse size={12} />}>Просрочена</Badge>;
+                        return <Badge variant="muted" icon={<HeartPulse size={12} />}>Не загружена</Badge>;
+                    })()}
+                </div>
+
+                <div className="profile-medbook-info">
+                    <div className="account-row">
+                        <div className="account-item">
+                            <span className="account-item-label"><CalendarDays size={13} /> Срок действия</span>
+                            <span className="account-item-value">
+                                {volunteer.medBookValidUntil
+                                    ? `до ${new Date(volunteer.medBookValidUntil).toLocaleDateString('ru-RU')}`
+                                    : 'не указан'}
+                            </span>
+                        </div>
+                        <div className="account-item">
+                            <span className="account-item-label"><ShieldCheck size={13} /> Статус</span>
+                            <span className="account-item-value">{volunteer.medBookStatus || 'Не загружена'}</span>
+                        </div>
+                    </div>
+
+                    {volunteer.medBookUploadedAt && (
+                        <div className="account-row">
+                            <div className="account-item">
+                                <span className="account-item-label"><CalendarCheck size={13} /> Загружен</span>
+                                <span className="account-item-value">
+                                    {new Date(volunteer.medBookUploadedAt).toLocaleDateString('ru-RU', {
+                                        day: 'numeric', month: 'long', year: 'numeric'
+                                    })}
+                                </span>
+                            </div>
+                            {volunteer.medBookVerifiedAt && (
+                                <div className="account-item">
+                                    <span className="account-item-label"><BadgeCheck size={13} /> Проверен</span>
+                                    <span className="account-item-value">
+                                        {new Date(volunteer.medBookVerifiedAt).toLocaleDateString('ru-RU', {
+                                            day: 'numeric', month: 'long', year: 'numeric'
+                                        })}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {volunteer.medBookComment && (
+                        <div className="profile-medbook-comment">
+                            <strong>Комментарий:</strong> {volunteer.medBookComment}
+                        </div>
+                    )}
+
+                    {volunteer.medBookScanPath && (
+                        <div className="profile-medbook-scan-row">
+                            <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={handleOpenScan}
+                                disabled={openingScan}
+                            >
+                                {openingScan ? <span className="spinner" /> : <Eye size={14} />}
+                                Открыть скан
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="profile-medbook-upload">
+                    <div className="form-row">
+                        <div className="field">
+                            <label className="field-label">Действительна до</label>
+                            <input
+                                type="date"
+                                className="input"
+                                value={medBookDate}
+                                onChange={e => setMedBookDate(e.target.value)}
+                            />
+                        </div>
+                        <div className="field">
+                            <label className="field-label">Скан (PDF/JPG/PNG до 10 МБ)</label>
+                            <label className="reg-medbook-file">
+                                <input
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    onChange={e => setMedBookFile(e.target.files?.[0] ?? null)}
+                                />
+                                <span className="reg-medbook-file-btn"><Upload size={14} /> Выбрать файл</span>
+                                <span className="reg-medbook-file-name">
+                                    {medBookFile ? medBookFile.name : 'файл не выбран'}
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleUploadMedBook}
+                        disabled={uploadingMedBook || !medBookFile}
+                    >
+                        {uploadingMedBook ? <span className="spinner" /> : <Upload size={15} />}
+                        Отправить на проверку
+                    </button>
+                    <div className="field-hint" style={{ marginTop: 10 }}>
+                        Подать скан может сам волонтёр — заявки не нужны. После проверки менеджером
+                        медкнижка откроет доступ к социальным, благотворительным и образовательным мероприятиям.
+                    </div>
+                </div>
+            </div>
+
             <div className="profile-grid">
                 {/* Редактирование личных данных */}
                 <form className="card" onSubmit={handleSave}>
@@ -430,16 +624,6 @@ export default function ProfilePage() {
                                 required
                             />
                         </div>
-                    </div>
-
-                    <div className="field">
-                        <label className="field-label">Медкнижка (действительна до)</label>
-                        <input
-                            type="date"
-                            className="input"
-                            value={form.medBookValidUntil}
-                            onChange={e => setForm({ ...form, medBookValidUntil: e.target.value })}
-                        />
                     </div>
 
                     <button type="submit" className="btn btn-primary" disabled={saving}>

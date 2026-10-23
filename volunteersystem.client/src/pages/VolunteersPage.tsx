@@ -22,6 +22,33 @@ const PAGE_SIZE = 12;
 
 type SortKey = 'name' | 'hours' | 'city' | 'created';
 
+const medBookBadge = (v: Volunteer) => {
+    const s = v.medBookStatus;
+    const date = v.medBookValidUntil ? ` · до ${v.medBookValidUntil}` : '';
+    if (s === 'Подтверждена') return <Badge variant="success">подтверждена{date}</Badge>;
+    if (s === 'На проверке') return <Badge variant="warning">на проверке</Badge>;
+    if (s === 'Отклонена') return <Badge variant="danger">отклонена</Badge>;
+    if (s === 'Просрочена') return <Badge variant="danger">просрочена</Badge>;
+    return <Badge variant="muted">нет</Badge>;
+};
+
+const medBookTip = (v: Volunteer) => {
+    switch (v.medBookStatus) {
+        case 'Подтверждена':
+            return `Медкнижка подтверждена, действует до ${v.medBookValidUntil} — открывает доступ к социальным, благотворительным и образовательным мероприятиям.`;
+        case 'На проверке':
+            return 'Скан медкнижки на проверке — менеджер подтвердит в ближайшее время.';
+        case 'Отклонена':
+            return v.medBookComment
+                ? `Медкнижка отклонена. Причина: ${v.medBookComment}`
+                : 'Медкнижка отклонена — попросите волонтёра загрузить корректный скан.';
+        case 'Просрочена':
+            return 'Срок действия медкнижки истёк — нужен новый скан.';
+        default:
+            return 'У волонтёра нет медкнижки — участие в мероприятиях с повышенными требованиями ограничено.';
+    }
+};
+
 export default function VolunteersPage() {
     const { user } = useAuth();
     const toast = useToast();
@@ -139,6 +166,18 @@ export default function VolunteersPage() {
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Ошибка');
+        }
+    };
+
+    const openScan = async (v: Volunteer) => {
+        try {
+            const blob = await volunteersApi.fetchMedBookScan(v.volunteerId);
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank', 'noopener');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось открыть скан');
         }
     };
 
@@ -267,9 +306,20 @@ action = { canCreate && items.length === 0 ? (
                             </td>
                             < td className = "num" > <strong> { hours } ч </strong> </td>
                             < td >
-                                { v.medBookValidUntil
-                                    ? <Badge variant= "success" > до { v.medBookValidUntil } </Badge>
-                                        : <Badge variant= "muted" > нет </Badge>}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    { medBookBadge(v) }
+                                    { v.medBookScanPath && (
+                                        <button
+                                            className="btn btn-icon btn-secondary"
+                                            style={{ width: 28, height: 28 }}
+                                            onClick={(e) => { e.stopPropagation(); openScan(v); }}
+                                            title="Открыть скан медкнижки"
+                                            aria-label="Открыть скан медкнижки"
+                                        >
+                                            <Eye size={13} />
+                                        </button>
+                                    )}
+                                </div>
                             </td>
                             < td >
                                 { v.isActive
@@ -312,10 +362,11 @@ className = "vcard-grid"
             const skills = skillsMap[v.volunteerId] || [];
             const hours = hoursMap[v.volunteerId] ?? 0;
             const level = getLevel(hours);
-            const hasMedBook = !!v.medBookValidUntil;
+            const medStatus = v.medBookStatus;
+            const hasMedBook = medStatus === 'Подтверждена';
             return (
                 <motion.div
-                    key= { v.volunteerId }
+                    key= { v.volunteerId } 
             initial = {{ opacity: 0, y: 12 }
         }
                     animate = {{ opacity: 1, y: 0 }}
@@ -325,14 +376,10 @@ onClick = {() => setProfileVolunteer(v)}
 className = "vcard"
                   >
 {/* Медкнижка индикатор */ }
-    < div className = {`vcard-corner cool-tip ${hasMedBook ? '' : 'is-danger'}`}
-    data-tip = {
-        hasMedBook
-            ? `Медкнижка действует до ${v.medBookValidUntil} — допускает участие в мероприятиях с повышенными требованиями.`
-            : 'У волонтёра нет медкнижки — участие в мероприятиях с повышенными требованиями ограничено.'
-    }
+    < div className = {`vcard-corner cool-tip ${hasMedBook ? '' : medStatus === 'На проверке' ? 'is-pending' : 'is-danger'}`}
+    data-tip = { medBookTip(v) }
 >
-{ hasMedBook?<ShieldCheck size = { 14 } /> : <Shield size={ 14 } />}
+{ hasMedBook ? <ShieldCheck size = { 14 } /> : <Shield size={ 14 } />}
 </div>
 
     < div className = "vcard-head">
@@ -391,6 +438,15 @@ className = "vcard"
             < span > ID #{ v.volunteerId } </span>
                 </div>
                 < div className = "vcard-actions" >
+                    { v.medBookScanPath && (
+                        <button className="btn btn-icon btn-secondary"
+                            onClick={(e) => { e.stopPropagation(); openScan(v); }}
+                            title="Открыть скан медкнижки"
+                            aria-label="Открыть скан медкнижки"
+                        >
+                            <Eye size={14} />
+                        </button>
+                    )}
                     <button className="btn btn-icon btn-secondary"
 onClick = {(e) => { e.stopPropagation(); setProfileVolunteer(v); }}
 title = "Профиль" >
@@ -460,7 +516,14 @@ footer = {
                                                                                         </div>
                                                                                         </Modal>
 
-                                                                                        < VolunteerProfileModal volunteer = { profileVolunteer } onClose = {() => setProfileVolunteer(null)} />
+                                                                                        < VolunteerProfileModal volunteer = { profileVolunteer } onClose = {() => setProfileVolunteer(null)}
+onVolunteerUpdated = {updated => {
+    setProfileVolunteer(updated);
+    setItems(list => list.map(x =>
+        x.volunteerId === updated.volunteerId ? updated : x
+    ));
+}}
+ />
                                                                                             </div>
   );
 }

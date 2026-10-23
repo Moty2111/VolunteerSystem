@@ -19,6 +19,8 @@ export interface RegisterRequest {
     city: string;
     loginName: string;
     password: string;
+    medBookValidUntil?: string | null;
+    medBookScan?: File | null;
 }
 
 export interface Volunteer {
@@ -29,6 +31,11 @@ export interface Volunteer {
     email: string;
     city: string;
     medBookValidUntil: string | null;
+    medBookStatus: string | null;
+    medBookScanPath: string | null;
+    medBookUploadedAt: string | null;
+    medBookVerifiedAt: string | null;
+    medBookComment: string | null;
     personalDataConsent: boolean;
     isActive: boolean;
     createdAt: string;
@@ -48,6 +55,20 @@ export interface EventItem {
     coordinatorName: string | null;
     createdAt: string;
     assignmentsCount: number;
+}
+
+export interface RecommendedEventItem {
+    eventId: number;
+    eventName: string;
+    dateStart: string;
+    dateEnd: string;
+    location: string;
+    eventTypeId: number;
+    eventTypeName: string | null;
+    status: string;
+    assignmentsCount: number;
+    score: number;
+    reasons: string[];
 }
 
 export interface Assignment {

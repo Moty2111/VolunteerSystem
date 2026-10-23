@@ -257,6 +257,10 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Демо-скан медкнижки для нескольких волонтёров, чтобы админ/менеджер
+// мог сразу увидеть кнопку «Открыть скан» (идемпотентно)
+await EnsureDemoMedBookScansAsync(app.Services);
+
 // ============================================================
 // 8. Pipeline
 // ============================================================
@@ -384,14 +388,67 @@ try
         }
     }
 
-    app.Logger.LogInformation("API слушает: {Urls}",
-        string.Join(", ", app.Urls.DefaultIfEmpty("по умолчанию из launchSettings.json")));
-    app.Run();
+    await app.StartAsync();
+    app.Logger.LogInformation("API слушает: {Urls}", string.Join(", ", app.Urls));
+    await app.WaitForShutdownAsync();
 }
-catch (IOException ex)
+catch (Exception ex) when (ex is IOException or AggregateException)
 {
-    app.Logger.LogCritical(
-        "Не удалось занять порт: {Message}. " +
-        "Закройте уже запущенный экземпляр API (netstat -ano | findstr :5084) и запустите снова.", ex.Message);
+    var message = ex is AggregateException aggregate
+        ? aggregate.GetBaseException().Message
+        : ex.Message;
+
+    Console.Error.WriteLine(
+        $"Не удалось занять порт: {message}. " +
+        "Закройте уже запущенный экземпляр API (netstat -ano | findstr :5084) и запустите снова.");
     Environment.Exit(1);
+}
+
+// ============================================================
+// Демо-скан медкнижки для нескольких волонтёров, чтобы админ/менеджер
+// сразу мог открыть скан по кнопке (идемпотентно, не критичен).
+// ============================================================
+static async Task EnsureDemoMedBookScansAsync(IServiceProvider services)
+{
+    const string demoPngBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAHgAAACgCAIAAABIaz/HAAADdklEQVR4nO3TNY9daRBF0e//B4Zxc/djZm4eu8FMzcxsHJ6JJ7lxJaVbeipt6YQ7WtIJs8uvmMHCYOklM1gE/fDzP2E0+gZooH01ob+43l9cv//xrzAafQM00L4aoK2gewtrvYW1u+//CKPRN0AD7asB2gq6O7/anV+9/fa3MBp9E0GzuAe0LfTwXMxrEzpzK525lZuvfwmj0TdAA+2rAdoKuj37oj374vrLn8Jo9A3QQPtqgLaCbg2etwbPrx7+EEajb4AG2lcTQbO4F5r9X5nBIujL+9+F0egboIH21YRGb7nRW764+00Yjb4BGmhfDdBW0PXuUr27dH77UxiNvgEaaF8N0FbQtc5irbN4dvNDGI2+iaBZ3APaFnp4Lua1CdX2QrW9cHr9XRiNvgEaaF8N0FbQldZ8pTV/cvVNGI2+ARpoXw3QVtDl5ly5OXd8+VUYjb4BGmhfTQTN4l4oNWaZwSLoo4svwmj0DdBA+2pCsT4o1geH5w/CaPQN0ED7aoC2gi7U+oVa/+DsXhiNvgEaaF8N0FbQ+WovX+3tn94Jo9E3ETSLe0DbQg/Pxbw2IVfp5irdvZNbYTT6BmigfTVAW0Fny51subN7fCOMRt8ADbSvBmgr6EypnSm1d46uhdHoG6CB9tVE0CzuhXSxxQwWQW8fXgmj0TdAA+2rCalCM1Vobh1cCqPRN0AD7asB2go6mW8k843N/QthNPoGaKB9NUBbQSdy9USuvrF3LoxG30TQLO4BbQs9PBfz2oSZbG0mW/u8eyaMRt8ADbSvBmgr6OlMdTpT/bRzKoxG3wANtK8GaCvoqXRlKl35uH0ijEbfAA20ryaCZnEvTKbKzGAR9IetY2E0+gZooH01YSJZmkiW3m8eCaPRN0AD7asB2gp6PFEcTxTfbRwKo9E3QAPtqwHaCnpspjA2U3j7+UAYjb6JoFncA9oWengu5rUJo9P50en8m0/7wmj0DdBA+2qAtoIemcqNTOVef9wTRqNvgAbaVwO0FfSzyeyzyeyrD7vCaPQN0ED7aiJoFvfCLxMZZrAI+uX7HWE0+gZooH014el4+ul4ev3dtjAafQM00L4aoK2gn4ylnoyl1t5uCaPRN0AD7asB2gr68Wjy8Why9c2mMBp9E0GzuAe0LfTwXMxrEx6NJB6NJFZebwij0TdAA+2r+R9zo3v+FaD4TAAAAABJRU5ErkJggg==";
+
+    try
+    {
+        using var scope = services.CreateScope();
+        var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        // Демо-скан выдаём ВСЕМ волонтёрам, у кого его ещё нет
+        var volunteers = await db.Volunteers
+            .Where(v => v.med_book_scan_path == null)
+            .ToListAsync();
+
+        if (volunteers.Count == 0) return;
+
+        var root = Path.Combine(
+            env.WebRootPath ?? Path.Combine(AppContext.BaseDirectory, "wwwroot"),
+            "medbooks");
+        Directory.CreateDirectory(root);
+        var bytes = Convert.FromBase64String(demoPngBase64);
+
+        foreach (var v in volunteers)
+        {
+            var fileName = $"demo_medbook_{v.volunteer_id}.png";
+            var filePath = Path.Combine(root, fileName);
+            if (!File.Exists(filePath))
+                await File.WriteAllBytesAsync(filePath, bytes);
+
+            v.med_book_scan_path = fileName;
+            v.med_book_uploaded_at = DateTime.Now;
+        }
+
+        await db.SaveChangesAsync();
+    }
+    catch (Exception ex)
+    {
+        // Демо-скан не критичен для работы системы
+        var logger = services.GetService<ILogger<Program>>();
+        logger?.LogWarning(ex, "Не удалось создать демо-скан медкнижки");
+    }
 }

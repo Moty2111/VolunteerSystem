@@ -10,10 +10,20 @@ import { EmptyState, Skeleton } from '../components/ui';
 import { IllBarChart } from '../components/illustrations';
 import { exportCSV, exportExcel, exportWord, exportPDF } from '../utils/export';
 import {
-    BarChart3, Users, Clock, Award, Download, FileText, FileSpreadsheet, File, Search
+    BarChart3, Users, Clock, Award, Download, FileText, FileSpreadsheet, File, Search,
+    ArrowDownUp, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 type Tab = 'summary' | 'rating' | 'partners' | 'hours' | 'audit';
+type SortDir = 'asc' | 'desc';
+
+const DEFAULT_SORT: Record<Tab, { field: string; dir: SortDir }> = {
+    summary: { field: 'total_hours', dir: 'desc' },
+    rating: { field: 'rating', dir: 'asc' },
+    hours: { field: 'total_hours', dir: 'desc' },
+    partners: { field: 'allocated_amount', dir: 'desc' },
+    audit: { field: 'action_date', dir: 'desc' }
+};
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'summary', label: 'Сводка волонтёров', icon: <Users size={ 14} /> },
@@ -38,8 +48,17 @@ const COLUMN_LABELS: Record<string, string> = {
     phone: 'Телефон',
     email: 'Email',
     inn: 'ИНН',
+    contract_number: 'Договор',
     allocated_amount: 'Получено, ₽',
     total_support: 'Сумма поддержки, ₽',
+    events_supported: 'Мероприятий',
+    event_id: 'ID мероприятия',
+    event_name: 'Мероприятие',
+    date_start: 'Дата',
+    volunteer_name: 'Волонтёр',
+    role_name: 'Роль',
+    hours_actual: 'Часы',
+    confirmed: 'Подтверждено',
     log_id: 'ID записи',
     user_id: 'Пользователь',
     action: 'Действие',
@@ -64,6 +83,8 @@ export default function ReportsPage() {
     });
     const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
     const [search, setSearch] = useState('');
+    const [sortField, setSortField] = useState(DEFAULT_SORT.summary.field);
+    const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_SORT.summary.dir);
 
     const load = async () => {
         setLoading(true);
@@ -92,6 +113,35 @@ export default function ReportsPage() {
             Object.values(row).some(v => String(v ?? '').toLowerCase().includes(q))
         );
     }, [data, search]);
+
+    const sortFields = useMemo(
+        () => (data.length > 0 ? Object.keys(data[0]) : []),
+        [data]
+    );
+
+    const sorted = useMemo(() => {
+        const list = [...filtered];
+        if (!sortField) return list;
+
+        list.sort((a, b) => {
+            const av = a[sortField];
+            const bv = b[sortField];
+            if (av == null && bv == null) return 0;
+            if (av == null) return 1;
+            if (bv == null) return -1;
+
+            const an = Number(av);
+            const bn = Number(bv);
+            const result =
+                Number.isFinite(an) && Number.isFinite(bn)
+                    ? an - bn
+                    : String(av).localeCompare(String(bv), 'ru', { numeric: true });
+
+            return sortDir === 'asc' ? result : -result;
+        });
+
+        return list;
+    }, [filtered, sortField, sortDir]);
 
     const kpi = useMemo(() => {
         if (filtered.length === 0) return null;
@@ -124,24 +174,31 @@ export default function ReportsPage() {
         }
         if (tab === 'rating') {
             // Рейтинг: линия с местами (топ-10 по rating, отображаем часы)
-            return filtered
+            return [...filtered]
+                .sort((a, b) => Number(a.rating || 0) - Number(b.rating || 0))
+                .slice(0, 10)
                 .map(r => ({
                     name: `#${r.rating} ${r.full_name}`,
                     hours: Number(r.total_hours || 0),
                     events: Number(r.events_count || 0)
-                }))
-                .slice(0, 10);
+                }));
         }
         if (tab === 'partners') {
-            return filtered.slice(0, 8).map(r => ({
-                name: String(r.partner_name || ''),
-                amount: Number(r.allocated_amount || r.total_support || 0)
-            }));
+            return [...filtered]
+                .sort((a, b) =>
+                    Number(b.allocated_amount || b.total_support || 0) -
+                    Number(a.allocated_amount || a.total_support || 0)
+                )
+                .slice(0, 8)
+                .map(r => ({
+                    name: String(r.partner_name || ''),
+                    amount: Number(r.allocated_amount || r.total_support || 0)
+                }));
         }
         return [];
     }, [filtered, tab]);
 
-    const displayRows = useMemo(() => filtered.map(localizeRow), [filtered]);
+    const displayRows = useMemo(() => sorted.map(localizeRow), [sorted]);
 
     const handleExport = async (format: 'csv' | 'excel' | 'word' | 'pdf') => {
         if (displayRows.length === 0) { toast.info('Нет данных для экспорта'); return; }
@@ -192,7 +249,11 @@ export default function ReportsPage() {
                                     {
                                         TABS.map(t => (
                                             <button key= { t.key } className = {`tab ${tab === t.key ? 'active' : ''}`}
-onClick = {() => setTab(t.key)}
+onClick = {() => {
+    setTab(t.key);
+    setSortField(DEFAULT_SORT[t.key].field);
+    setSortDir(DEFAULT_SORT[t.key].dir);
+}}
 style = {{ display: 'flex', alignItems: 'center', gap: 6 }}>
 { t.icon } { t.label }
 </button>
@@ -205,6 +266,31 @@ style = {{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input className="input" placeholder = "Поиск…" value = { search }
 onChange = { e => setSearch(e.target.value) } />
     </div>
+        <div className="sort-group" >
+            <ArrowDownUp size = { 14 } />
+            <select
+                className = "select"
+                value = { sortField }
+                onChange = { e => setSortField(e.target.value) }
+                aria-label = "Сортировка"
+                disabled = { sortFields.length === 0 }
+            >
+                { sortFields.map(field => (
+                    <option key= { field } value = { field }>
+                        { COLUMN_LABELS[field] || field }
+                    </option>
+                )) }
+            </select>
+            <button
+                type = "button"
+                className = "btn btn-secondary btn-icon btn-sm"
+                onClick = {() => setSortDir(dir => dir === 'asc' ? 'desc' : 'asc')}
+                title = { sortDir === 'asc' ? 'По возрастанию' : 'По убыванию' }
+                aria-label = { sortDir === 'asc' ? 'По возрастанию' : 'По убыванию' }
+            >
+                { sortDir === 'asc' ? <ArrowUp size={ 14 } /> : <ArrowDown size={ 14 } /> }
+            </button>
+        </div>
 {
     tab === 'hours' && (
         <>

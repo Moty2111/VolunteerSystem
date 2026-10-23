@@ -19,6 +19,18 @@ public partial class Volunteer
 
     public DateOnly? med_book_valid_until { get; set; }
 
+    public string? med_book_status { get; set; }
+
+    public string? med_book_scan_path { get; set; }
+
+    public DateTime? med_book_uploaded_at { get; set; }
+
+    public DateTime? med_book_verified_at { get; set; }
+
+    public int? med_book_verified_by { get; set; }
+
+    public string? med_book_notes { get; set; }
+
     public bool personal_data_consent { get; set; }
 
     public bool is_active { get; set; }

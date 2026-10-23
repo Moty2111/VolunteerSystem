@@ -5,7 +5,7 @@ import { eventsApi } from '../../api/events';
 import { assignmentsApi } from '../../api/assignments';
 import { volunteersApi } from '../../api/volunteers';
 import { skillsApi, type VolunteerSkill } from '../../api/skills';
-import type { EventItem, Assignment, Volunteer } from '../../types';
+import type { EventItem, Assignment, Volunteer, RecommendedEventItem } from '../../types';
 import { Badge, EmptyState, StatCard } from '../../components/ui';
 import { IllCalendar, IllSprout } from '../../components/illustrations';
 import { getLevel } from '../../utils/level';
@@ -41,6 +41,7 @@ export default function VolunteerDashboard() {
     const [assignments, setAssignments] = useState<Assignment[]>([]);
     const [me, setMe] = useState<Volunteer | null>(null);
     const [skills, setSkills] = useState<VolunteerSkill[]>([]);
+    const [recommended, setRecommended] = useState<RecommendedEventItem[]>([]);
 
     const volunteerId = user?.volunteerId ?? null;
 
@@ -55,12 +56,14 @@ export default function VolunteerDashboard() {
                 setAssignments(a);
 
                 if (volunteerId) {
-                    const [profile, mySkills] = await Promise.all([
+                    const [profile, mySkills, rec] = await Promise.all([
                         volunteersApi.getById(volunteerId).catch(() => null),
-                        skillsApi.getVolunteerSkills(volunteerId).catch(() => [] as VolunteerSkill[])
+                        skillsApi.getVolunteerSkills(volunteerId).catch(() => [] as VolunteerSkill[]),
+                        eventsApi.recommended().catch(() => [] as RecommendedEventItem[])
                     ]);
                     setMe(profile);
                     setSkills(mySkills);
+                    setRecommended(rec);
                 }
             } catch { /* ignore */ }
             finally { setLoading(false); }
@@ -185,6 +188,53 @@ export default function VolunteerDashboard() {
                         </span>
                     </div>
                     <Link to="/profile" className="dash-alert-link">Мой профиль</Link>
+                </div>
+            )}
+
+            {!loading && recommended.length > 0 && (
+                <div className="card" style={{ marginTop: 16 }}>
+                    <div className="card-header">
+                        <h3 className="card-title"><Sparkles size={16} /> Рекомендуем вам</h3>
+                        <Link to="/events" style={{ fontSize: 12, fontWeight: 600 }}>
+                            Все мероприятия <ArrowRight size={12} style={{ verticalAlign: 'middle' }} />
+                        </Link>
+                    </div>
+                    <div className="rec-row">
+                        {recommended.map(r => {
+                            const d = new Date(r.dateStart);
+                            return (
+                                <div key={r.eventId} className="rec-card" onClick={() => navigate('/events')}>
+                                    <div className="rec-thumb">
+                                        <img src={posterFor(r.eventTypeId)} alt="" />
+                                        <span className="thumb-date">
+                                            {d.getDate()} {d.toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '')}
+                                        </span>
+                                    </div>
+                                    <div className="rec-body">
+                                        <div className="rec-title" title={r.eventName}>{r.eventName}</div>
+                                        <div className="rec-meta">
+                                            <span><MapPin size={11} /> {r.location}</span>
+                                            <span className="dot-sep">·</span>
+                                            <span>{r.eventTypeName || 'мероприятие'}</span>
+                                        </div>
+                                        <div className="rec-reasons">
+                                            {r.reasons.map((reason, i) => (
+                                                <span key={i} className="skill-chip">{reason}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="rec-foot">
+                                        <button
+                                            className="btn btn-primary btn-sm"
+                                            onClick={(e) => { e.stopPropagation(); navigate('/events'); }}
+                                        >
+                                            <UserPlus size={13} /> Записаться
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
 

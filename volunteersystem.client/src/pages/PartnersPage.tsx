@@ -87,8 +87,6 @@ export default function PartnersPage() {
         }
         if (statusFilter) list = list.filter(p => getStatus(p) === statusFilter);
 
-        if (view === 'cards') return list;
-
         return [...list].sort((a, b) => {
             switch (sort) {
                 case 'amount':
@@ -102,7 +100,7 @@ export default function PartnersPage() {
                     return a.partnerName.localeCompare(b.partnerName, 'ru');
             }
         });
-    }, [items, search, statusFilter, view, sort]);
+    }, [items, search, statusFilter, sort]);
 
     const total = useMemo(() => items.reduce((s, p) => s + (p.supportAmount ?? 0), 0), [items]);
 

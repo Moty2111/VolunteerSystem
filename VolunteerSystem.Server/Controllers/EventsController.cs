@@ -182,8 +182,119 @@ public class EventsController : ControllerBase
     }
 
     // ============================================================
+    // GET: /api/events/recommended
+    // Персональные рекомендации для волонтёра: учитываем город,
+    // навыки (сопоставление с типом мероприятия) и «горящие» даты.
+    // ============================================================
+    [HttpGet("recommended")]
+    [Authorize(Roles = "Волонтёр")]
+    public async Task<ActionResult<IEnumerable<RecommendedEventDto>>> Recommended(CancellationToken ct)
+    {
+        if (!int.TryParse(User.FindFirst("VolunteerId")?.Value, out var volunteerId))
+            return Forbid();
+
+        var me = await _db.Volunteers.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.volunteer_id == volunteerId, ct);
+        if (me is null) return NotFound(new { message = "Волонтёр не найден" });
+
+        var skillNames = await _db.Volunteer_Skills
+            .AsNoTracking()
+            .Where(vs => vs.volunteer_id == volunteerId)
+            .Select(vs => vs.skill.skill_name)
+            .ToListAsync(ct);
+
+        var myEventIds = await _db.Assignments
+            .AsNoTracking()
+            .Where(a => a.volunteer_id == volunteerId)
+            .Select(a => a.event_id)
+            .ToListAsync(ct);
+
+        var now = DateTime.Now;
+        var events = await _db.Events
+            .AsNoTracking()
+            .Include(e => e.event_type)
+            .Include(e => e.Assignments)
+            .Where(e => e.status != EventStatuses.Finished
+                     && e.status != EventStatuses.Cancelled
+                     && e.date_end >= now
+                     && !myEventIds.Contains(e.event_id))
+            .ToListAsync(ct);
+
+        var result = new List<RecommendedEventDto>();
+        foreach (var e in events)
+        {
+            var dto = ToRecommended(e);
+            ScoreRecommendation(dto, me.city, skillNames);
+            result.Add(dto);
+        }
+
+        // сначала с сильными причинами, затем по близости даты
+        return Ok(result
+            .OrderByDescending(r => r.Score)
+            .ThenBy(r => r.DateStart)
+            .Take(6));
+    }
+
+    // ============================================================
     // Helpers
     // ============================================================
+
+    private static readonly Dictionary<string, int[]> SkillTypeMatches = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["первая помощь"] = new[] { 1, 4, 5 },
+        ["работа с детьми"] = new[] { 1, 4, 6 },
+        ["работа с пожилыми людьми"] = new[] { 1, 4 },
+        ["организация мероприятий"] = new[] { 3, 4, 6, 5 },
+        ["вождение автомобиля"] = new[] { 2, 4, 6 },
+        ["английский язык"] = new[] { 6, 3 },
+        ["немецкий язык"] = new[] { 6, 3 },
+        ["веб-разработка"] = new[] { 6, 4, 3 }
+    };
+
+    private static void ScoreRecommendation(RecommendedEventDto dto, string city, List<string> skillNames)
+    {
+        dto.Score = 1;
+
+        if (!string.IsNullOrWhiteSpace(city)
+            && dto.Location.Contains(city, StringComparison.OrdinalIgnoreCase))
+        {
+            dto.Score += 2;
+            dto.Reasons.Add("проходит в вашем городе");
+        }
+
+        var matchedSkill = skillNames.FirstOrDefault(s => SkillTypeMatches.ContainsKey(s));
+        if (matchedSkill is not null
+            && SkillTypeMatches[matchedSkill].Contains(dto.EventTypeId))
+        {
+            dto.Score += 2;
+            dto.Reasons.Add($"подходит под навык «{matchedSkill}»");
+        }
+
+        if (dto.Status == EventStatuses.InProgress)
+        {
+            dto.Score += 1;
+            dto.Reasons.Add("идёт прямо сейчас");
+        }
+        else if (dto.DateStart <= DateTime.Now.AddDays(7))
+        {
+            dto.Score += 1;
+            dto.Reasons.Add("состоится на этой неделе");
+        }
+    }
+
+    private static RecommendedEventDto ToRecommended(Event e) => new()
+    {
+        EventId = e.event_id,
+        EventName = e.event_name,
+        DateStart = e.date_start,
+        DateEnd = e.date_end,
+        Location = e.location,
+        EventTypeId = e.event_type_id,
+        EventTypeName = e.event_type?.type_name,
+        Status = e.status,
+        AssignmentsCount = e.Assignments?.Count ?? 0
+    };
+
     private static EventDto ToDto(Event e) => new()
     {
         EventId = e.event_id,

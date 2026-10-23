@@ -8,7 +8,8 @@ import { IllCalendar } from '../components/illustrations';
 import type { EventItem } from '../types';
 import { plural } from '../utils/format';
 import {
-    ChevronLeft, ChevronRight, CalendarDays, MapPin, Users, Circle
+    ChevronLeft, ChevronRight, CalendarDays, MapPin, Users,
+    Clock, Sparkles, ArrowRight
 } from 'lucide-react';
 
 import posterSocial from '../assets/events/social.svg';
@@ -31,10 +32,15 @@ const STATUS_COLORS: Record<string, string> = {
     'Отменено': '#ff5c7a'
 };
 
-const DOW = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+const DOW = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 const ymd = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const timeOf = (value: string) =>
+    new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
 export default function CalendarPage() {
     const navigate = useNavigate();
@@ -58,7 +64,6 @@ export default function CalendarPage() {
         })();
     }, []);
 
-    /* события по дням (попадает в период от начала до конца) */
     const byDay = useMemo(() => {
         const map = new Map<string, EventItem[]>();
         events.forEach(e => {
@@ -81,7 +86,7 @@ export default function CalendarPage() {
         const year = cursor.getFullYear();
         const month = cursor.getMonth();
         const first = new Date(year, month, 1);
-        const offset = (first.getDay() + 6) % 7; // неделя с понедельника
+        const offset = (first.getDay() + 6) % 7;
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         const list: Array<{ date: Date; inMonth: boolean }> = [];
         for (let i = 0; i < offset; i++) {
@@ -100,9 +105,41 @@ export default function CalendarPage() {
         return list;
     }, [cursor]);
 
-    const selectedEvents = useMemo(() => byDay.get(selected) || [], [byDay, selected]);
+    const selectedEvents = useMemo(() => {
+        const list = byDay.get(selected) || [];
+        return [...list].sort((a, b) =>
+            new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime()
+        );
+    }, [byDay, selected]);
 
-    const monthTitle = cursor.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthEvents = useMemo(() => {
+        const start = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+        const end = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        return events.filter(e => {
+            const eventStart = new Date(e.dateStart);
+            const eventEnd = new Date(e.dateEnd);
+            return eventStart < end && eventEnd >= start;
+        });
+    }, [events, cursor]);
+
+    const busyDays = useMemo(
+        () => cells.filter(c => c.inMonth && (byDay.get(ymd(c.date))?.length || 0) > 0).length,
+        [cells, byDay]
+    );
+
+    const nextEvent = useMemo(() => {
+        const now = new Date();
+        return [...events]
+            .filter(e => new Date(e.dateEnd) >= now)
+            .sort((a, b) => new Date(a.dateStart).getTime() - new Date(b.dateStart).getTime())[0];
+    }, [events]);
+
+    const monthTitle = capitalize(cursor.toLocaleDateString('ru-RU', { month: 'long' }));
+    const monthYear = cursor.getFullYear();
+    const selectedDate = new Date(selected);
+    const selectedLabel = selectedDate.toLocaleDateString('ru-RU', {
+        weekday: 'long', day: 'numeric', month: 'long'
+    });
 
     const shiftMonth = (delta: number) => {
         setCursor(c => new Date(c.getFullYear(), c.getMonth() + delta, 1));
@@ -130,18 +167,67 @@ export default function CalendarPage() {
                 </button>
             </div>
 
+            <div className="cal-summary">
+                <div className="cal-summary-card">
+                    <span className="cal-summary-icon"><CalendarDays size={18} /></span>
+                    <div>
+                        <div className="cal-summary-value">{monthEvents.length}</div>
+                        <div className="cal-summary-label">
+                            {plural(monthEvents.length, ['событие', 'события', 'событий'])} в этом месяце
+                        </div>
+                    </div>
+                </div>
+                <div className="cal-summary-card">
+                    <span className="cal-summary-icon"><Sparkles size={18} /></span>
+                    <div>
+                        <div className="cal-summary-value">{busyDays}</div>
+                        <div className="cal-summary-label">
+                            {plural(busyDays, ['занятый день', 'занятых дня', 'занятых дней'])}
+                        </div>
+                    </div>
+                </div>
+                <div className="cal-summary-card cal-summary-next">
+                    <span className="cal-summary-icon"><Clock size={18} /></span>
+                    <div>
+                        <div className="cal-summary-value cal-summary-event">
+                            {nextEvent ? nextEvent.eventName : 'Нет событий'}
+                        </div>
+                        <div className="cal-summary-label">
+                            {nextEvent
+                                ? `Ближайшее · ${new Date(nextEvent.dateStart).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`
+                                : 'Расписание свободно'}
+                        </div>
+                    </div>
+                    {nextEvent && (
+                        <button
+                            className="cal-summary-arrow"
+                            onClick={() => navigate('/events')}
+                            aria-label="Перейти к мероприятиям"
+                        >
+                            <ArrowRight size={16} />
+                        </button>
+                    )}
+                </div>
+            </div>
+
             <div className="cal-wrap">
                 <div className="card cal-main">
-                    <div className="card-header cal-toolbar">
-                        <button className="icon-btn" onClick={() => shiftMonth(-1)} aria-label="Предыдущий месяц">
-                            <ChevronLeft size={16} />
-                        </button>
-                        <h3 className="card-title" style={{ textTransform: 'capitalize' }}>
-                            {monthTitle}
-                        </h3>
-                        <button className="icon-btn" onClick={() => shiftMonth(1)} aria-label="Следующий месяц">
-                            <ChevronRight size={16} />
-                        </button>
+                    <div className="cal-toolbar">
+                        <div className="cal-month">
+                            <button className="icon-btn" onClick={() => shiftMonth(-1)} aria-label="Предыдущий месяц">
+                                <ChevronLeft size={18} />
+                            </button>
+                            <div className="cal-month-copy">
+                                <span className="cal-month-name">{monthTitle}</span>
+                                <span className="cal-month-year">{monthYear}</span>
+                            </div>
+                            <button className="icon-btn" onClick={() => shiftMonth(1)} aria-label="Следующий месяц">
+                                <ChevronRight size={18} />
+                            </button>
+                        </div>
+                        <div className="cal-toolbar-actions">
+                            <button className="btn btn-ghost btn-sm" onClick={goToday}>Сегодня</button>
+                        </div>
                     </div>
 
                     <div className="cal-grid cal-dow">
@@ -149,35 +235,50 @@ export default function CalendarPage() {
                     </div>
 
                     {loading ? (
-                        <Skeleton height={340} radius={14} />
+                        <Skeleton height={360} radius={14} />
                     ) : (
-                        <div className="cal-grid">
+                        <div className="cal-grid cal-month-grid">
                             {cells.map(({ date, inMonth }) => {
                                 const key = ymd(date);
                                 const list = byDay.get(key) || [];
                                 const isToday = key === ymd(today);
                                 const isSelected = key === selected;
+                                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                                 return (
                                     <button
                                         key={key}
                                         type="button"
-                                        className={`cal-day${inMonth ? '' : ' is-out'}${isToday ? ' is-today' : ''}${isSelected ? ' is-selected' : ''}`}
+                                        className={[
+                                            'cal-day',
+                                            inMonth ? '' : 'is-out',
+                                            isToday ? 'is-today' : '',
+                                            isSelected ? 'is-selected' : '',
+                                            isWeekend ? 'is-weekend' : ''
+                                        ].filter(Boolean).join(' ')}
                                         onClick={() => setSelected(key)}
                                     >
-                                        <span className="cal-daynum">{date.getDate()}</span>
+                                        <span className="cal-day-head">
+                                            <span className="cal-daynum">{date.getDate()}</span>
+                                            {isToday && <span className="cal-today-label">Сегодня</span>}
+                                        </span>
                                         <span className="cal-chips">
                                             {list.slice(0, 2).map(e => (
                                                 <span
                                                     key={e.eventId}
                                                     className="cal-chip"
-                                                    style={{ background: STATUS_COLORS[e.status] || '#94a3b8' }}
+                                                    style={{
+                                                        color: STATUS_COLORS[e.status] || '#94a3b8',
+                                                        borderColor: `${STATUS_COLORS[e.status] || '#94a3b8'}55`,
+                                                        background: `${STATUS_COLORS[e.status] || '#94a3b8'}18`
+                                                    }}
                                                     title={`${e.eventName} · ${e.location}`}
                                                 >
-                                                    {e.eventName}
+                                                    <span className="cal-chip-dot" />
+                                                    <span className="cal-chip-label">{e.eventName}</span>
                                                 </span>
                                             ))}
                                             {list.length > 2 && (
-                                                <span className="cal-more">+{list.length - 2}</span>
+                                                <span className="cal-more">+{list.length - 2} ещё</span>
                                             )}
                                         </span>
                                     </button>
@@ -187,6 +288,7 @@ export default function CalendarPage() {
                     )}
 
                     <div className="cal-legend">
+                        <span className="cal-legend-title">Статусы</span>
                         {Object.entries(STATUS_COLORS).map(([status, color]) => (
                             <span key={status} className="cal-legend-item">
                                 <span className="cal-legend-dot" style={{ background: color }} />
@@ -197,69 +299,81 @@ export default function CalendarPage() {
                 </div>
 
                 <div className="card cal-side">
-                    <div className="card-header">
-                        <h3 className="card-title">
-                            <CalendarDays size={16} />{' '}
-                            {new Date(selected).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
-                        </h3>
+                    <div className="cal-side-head">
+                        <div className="cal-side-date">
+                            <span className="cal-side-day">{selectedDate.getDate()}</span>
+                            <div>
+                                <span className="cal-side-month">
+                                    {selectedDate.toLocaleDateString('ru-RU', { month: 'long' })}
+                                </span>
+                                <span className="cal-side-weekday">
+                                    {selectedDate.toLocaleDateString('ru-RU', { weekday: 'long' })}
+                                </span>
+                            </div>
+                        </div>
                         <Badge variant={selectedEvents.length ? 'primary' : 'muted'}>
                             {selectedEvents.length} {plural(selectedEvents.length, ['событие', 'события', 'событий'])}
                         </Badge>
                     </div>
 
+                    <div className="cal-side-subtitle">{capitalize(selectedLabel)}</div>
+
                     {loading ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            {[1, 2].map(i => <Skeleton key={i} height={70} radius={12} />)}
+                            {[1, 2].map(i => <Skeleton key={i} height={92} radius={12} />)}
                         </div>
                     ) : selectedEvents.length === 0 ? (
                         <EmptyState
                             illustration={<IllCalendar size={90} />}
                             title="Событий нет"
-                            text="Выберите другой день или загляните в «Мероприятия»"
-                            action={<button className="btn btn-secondary btn-sm" onClick={() => navigate('/events')}>Все мероприятия</button>}
+                            text="Выберите другой день или посмотрите все мероприятия"
+                            action={
+                                <button className="btn btn-secondary btn-sm" onClick={() => navigate('/events')}>
+                                    Все мероприятия
+                                </button>
+                            }
                         />
                     ) : (
-                        <div className="upcoming-list">
+                        <div className="cal-agenda">
                             {selectedEvents.map(e => {
-                                const d = new Date(e.dateStart);
-                                const day = d.getDate().toString().padStart(2, '0');
-                                const mon = d.toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '');
+                                const color = STATUS_COLORS[e.status] || '#94a3b8';
                                 return (
-                                <motion.div
-                                    key={e.eventId}
-                                    className="upcoming-item"
-                                    initial={{ opacity: 0, y: 6 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    onClick={() => navigate('/events')}
-                                >
-                                    <div className="upcoming-thumb">
-                                        <img src={posterFor(e.eventTypeId)} alt="" />
-                                        <span className="thumb-date">{day} {mon}</span>
-                                    </div>
-                                    <div className="upcoming-info">
-                                        <div className="upcoming-title" title={e.eventName}>{e.eventName}</div>
-                                        <div className="upcoming-meta">
-                                            <span><MapPin size={12} /> {e.location}</span>
-                                            <span className="dot-sep">·</span>
-                                            <span><Users size={12} /> {e.assignmentsCount}</span>
+                                    <motion.button
+                                        type="button"
+                                        key={e.eventId}
+                                        className="cal-agenda-item"
+                                        initial={{ opacity: 0, y: 6 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        onClick={() => navigate('/events')}
+                                    >
+                                        <div className="cal-agenda-time">
+                                            <span>{timeOf(e.dateStart)}</span>
+                                            <span className="cal-agenda-time-end">{timeOf(e.dateEnd)}</span>
                                         </div>
-                                        <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
-                                            <span
-                                                style={{
-                                                    width: 8, height: 8, borderRadius: '50%',
-                                                    background: STATUS_COLORS[e.status] || '#94a3b8'
-                                                }}
-                                            />
-                                            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{e.status}</span>
+                                        <div className="cal-agenda-body">
+                                            <div className="cal-agenda-title" title={e.eventName}>
+                                                {e.eventName}
+                                            </div>
+                                            <div className="cal-agenda-meta">
+                                                <MapPin size={12} /> {e.location}
+                                            </div>
+                                            <div className="cal-agenda-foot">
+                                                <span className="cal-agenda-status" style={{ color }}>
+                                                    <span style={{ background: color }} />
+                                                    {e.status}
+                                                </span>
+                                                <span className="cal-agenda-sep">·</span>
+                                                <span><Users size={12} /> {e.assignmentsCount}</span>
+                                            </div>
                                         </div>
-                                    </div>
-                                </motion.div>
+                                        <img
+                                            className="cal-agenda-thumb"
+                                            src={posterFor(e.eventTypeId)}
+                                            alt=""
+                                        />
+                                    </motion.button>
                                 );
                             })}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
-                                <Circle size={8} fill="currentColor" strokeWidth={0} />
-                                Нажмите на событие, чтобы открыть список мероприятий
-                            </div>
                         </div>
                     )}
                 </div>

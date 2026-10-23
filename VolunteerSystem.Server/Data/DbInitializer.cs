@@ -102,6 +102,8 @@ public static class DbInitializer
 
         await RunBatchesAsync(connString, DemoUpgradeScript, logger);
 
+        await ApplyMedBookUpgradeAsync(connString, logger);
+
         await using (var mark = new SqlCommand(
             "IF NOT EXISTS (SELECT 1 FROM SeedHistory WHERE version = @version) " +
             "INSERT INTO SeedHistory (version) VALUES (@version)", conn))
@@ -113,7 +115,118 @@ public static class DbInitializer
         logger.LogInformation("Демо-данные обновлены до версии {Version}", CurrentDemoDataVersion);
     }
 
-    private const int CurrentDemoDataVersion = 2;
+    private static async Task ApplyMedBookUpgradeAsync(string connString, ILogger logger)
+    {
+        await using var conn = new SqlConnection(connString);
+        await conn.OpenAsync();
+
+        // Add new columns if missing
+        var columnsToAdd = new[]
+        {
+            ("med_book_status", "NVARCHAR(20) NOT NULL DEFAULT N'Не загружена' CONSTRAINT chk_med_book_status CHECK (med_book_status IN (N'Не загружена', N'На проверке', N'Подтверждена', N'Отклонена', N'Просрочена'))"),
+            ("med_book_scan_path", "NVARCHAR(500) NULL"),
+            ("med_book_uploaded_at", "DATETIME NULL"),
+            ("med_book_verified_by", "INT NULL"),
+            ("med_book_verified_at", "DATETIME NULL"),
+            ("med_book_notes", "NVARCHAR(MAX) NULL")
+        };
+
+        foreach (var (colName, colDef) in columnsToAdd)
+        {
+            await using var cmd = new SqlCommand(
+                $"IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'{colName}') ALTER TABLE Volunteer ADD {colDef}",
+                conn);
+            try
+            {
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                logger.LogWarning(ex, "Ошибка при добавлении колонки {Column} в Volunteer", colName);
+            }
+        }
+
+        // Add foreign key if missing
+        await using (var fkCheck = new SqlCommand(
+            "IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_verified_by_FK') " +
+            "ALTER TABLE Volunteer ADD CONSTRAINT med_book_verified_by_FK FOREIGN KEY (med_book_verified_by) REFERENCES SystemUser(user_id) ON DELETE SET NULL", conn))
+        {
+            try
+            {
+                await fkCheck.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                logger.LogWarning(ex, "Ошибка при добавлении FK med_book_verified_by_FK");
+            }
+        }
+
+        // Пересоздаём триггер медкнижки с актуальной логикой
+        // (CREATE TRIGGER должен быть первой инструкцией батча, поэтому отдельно)
+        await using (var drop = new SqlCommand(
+            "DROP TRIGGER IF EXISTS trg_assignment_medbook", conn))
+        {
+            await drop.ExecuteNonQueryAsync();
+        }
+
+        await using (var trgCheck = new SqlCommand(
+            @"CREATE TRIGGER trg_assignment_medbook
+        ON Assignment
+        AFTER INSERT, UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            IF EXISTS (
+                SELECT 1
+                FROM inserted i
+                JOIN Event e ON e.event_id = i.event_id
+                JOIN EventType et ON et.event_type_id = e.event_type_id
+                JOIN Volunteer v ON v.volunteer_id = i.volunteer_id
+                WHERE et.type_name IN (N'Социальное', N'Благотворительное', N'Образовательное')
+                  AND (v.med_book_status <> N'Подтверждена'
+                       OR v.med_book_valid_until IS NULL
+                       OR v.med_book_valid_until < CAST(GETDATE() AS DATE))
+            )
+            BEGIN
+                RAISERROR(N'Для участия в мероприятии требуется действующая медицинская книжка.', 16, 1);
+                ROLLBACK TRANSACTION;
+            END
+        END;", conn))
+        {
+            try
+            {
+                await trgCheck.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                logger.LogWarning(ex, "Ошибка при воссоздании триггера trg_assignment_medbook");
+            }
+        }
+
+        // Set default status for existing rows where status is null
+        await using (var upd = new SqlCommand(
+            "UPDATE Volunteer SET med_book_status = N'Не загружена' WHERE med_book_status IS NULL", conn))
+        {
+            await upd.ExecuteNonQueryAsync();
+        }
+
+        // Демо-данные: даты из прошлых версий считаем подтверждёнными, просроченные метим
+        await using (var backfill = new SqlCommand(
+            "UPDATE Volunteer SET med_book_status = N'Подтверждена' " +
+            "WHERE (med_book_status IS NULL OR med_book_status = N'Не загружена') " +
+            "  AND med_book_valid_until IS NOT NULL " +
+            "  AND med_book_valid_until >= CAST(GETDATE() AS DATE); " +
+            "UPDATE Volunteer SET med_book_status = N'Просрочена' " +
+            "WHERE med_book_status = N'Подтверждена' " +
+            "  AND med_book_valid_until < CAST(GETDATE() AS DATE);", conn))
+        {
+            await backfill.ExecuteNonQueryAsync();
+        }
+
+        logger.LogInformation("Проведено обновление медкнижки до версии 4");
+    }
+
+    private const int CurrentDemoDataVersion = 4;
 
     /// <summary>БД считается незаполненной, если в ней нет ни ролей, ни пользователей.</summary>
     private static async Task<bool> IsEmptyAsync(string connString, ILogger logger)
@@ -221,16 +334,23 @@ public static class DbInitializer
 
         -- 2. Волонтёр
         CREATE TABLE Volunteer (
-            volunteer_id          INT PRIMARY KEY IDENTITY(1,1),
-            full_name             NVARCHAR(200) NOT NULL,
-            birth_date            DATE          NOT NULL,
-            phone                 NVARCHAR(20)  NOT NULL,
-            email                 NVARCHAR(150) NOT NULL UNIQUE,
-            city                  NVARCHAR(100) NOT NULL,
-            med_book_valid_until  DATE          NULL,
-            personal_data_consent BIT           NOT NULL DEFAULT 0,
-            is_active             BIT           NOT NULL DEFAULT 1,
-            created_at            DATETIME      NOT NULL DEFAULT GETDATE(),
+            volunteer_id                    INT PRIMARY KEY IDENTITY(1,1),
+            full_name                       NVARCHAR(200) NOT NULL,
+            birth_date                      DATE          NOT NULL,
+            phone                           NVARCHAR(20)  NOT NULL,
+            email                           NVARCHAR(150) NOT NULL UNIQUE,
+            city                            NVARCHAR(100) NOT NULL,
+            med_book_valid_until            DATE          NULL,
+            med_book_status                 NVARCHAR(20)  NOT NULL DEFAULT N'Не загружена'
+                CONSTRAINT chk_med_book_status CHECK (med_book_status IN (N'Не загружена', N'На проверке', N'Подтверждена', N'Отклонена', N'Просрочена')),
+            med_book_scan_path              NVARCHAR(500) NULL,
+            med_book_uploaded_at            DATETIME      NULL,
+            med_book_verified_by            INT           NULL,
+            med_book_verified_at            DATETIME      NULL,
+            med_book_notes                  NVARCHAR(MAX) NULL,
+            personal_data_consent           BIT           NOT NULL DEFAULT 0,
+            is_active                       BIT           NOT NULL DEFAULT 1,
+            created_at                      DATETIME      NOT NULL DEFAULT GETDATE(),
             CONSTRAINT chk_volunteer_birth CHECK (birth_date <= DATEADD(YEAR, -14, GETDATE()))
         );
         GO
@@ -254,6 +374,11 @@ public static class DbInitializer
         CREATE UNIQUE INDEX uq_systemuser_volunteer
             ON SystemUser(volunteer_id)
             WHERE volunteer_id IS NOT NULL;
+        GO
+
+        ALTER TABLE Volunteer
+            ADD CONSTRAINT fk_volunteer_medbook_verified_by
+            FOREIGN KEY (med_book_verified_by) REFERENCES SystemUser(user_id) ON DELETE SET NULL;
         GO
 
         -- 4. Навыки волонтёра
@@ -394,6 +519,7 @@ public static class DbInitializer
                 JOIN EventType et ON et.event_type_id = e.event_type_id
                 JOIN Volunteer v ON v.volunteer_id = i.volunteer_id
                 WHERE et.type_name IN (N'Социальное', N'Благотворительное', N'Образовательное')
+                  AND v.med_book_status = N'Подтверждена'
                   AND (v.med_book_valid_until IS NULL
                        OR v.med_book_valid_until < CAST(GETDATE() AS DATE))
             )
@@ -579,20 +705,14 @@ public static class DbInitializer
         -- ============================================================
         -- 14.2. Волонтёры (даты медкнижек — относительно сегодня)
         -- ============================================================
-        INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent)
+        INSERT INTO Volunteer (full_name, birth_date, phone, email, city, med_book_valid_until, personal_data_consent, med_book_status, med_book_scan_path, med_book_uploaded_at, med_book_verified_by, med_book_verified_at, med_book_notes)
         VALUES
-            (N'Иванов Иван Иванович',     '2000-05-14', N'+79001112233', N'ivanov@mail.ru',     N'Москва',
-                DATEADD(YEAR, 1, GETDATE()), 1),
-            (N'Петрова Анна Сергеевна',   '1998-11-02', N'+79004445566', N'petrova@mail.ru',    N'Санкт-Петербург',
-                DATEADD(MONTH, -3, GETDATE()), 1),
-            (N'Сидоров Пётр Алексеевич',  '2005-03-21', N'+79007778899', N'sidorov@mail.ru',    N'Москва',
-                NULL, 1),
-            (N'Кузнецова Мария Олеговна', '2001-07-19', N'+79002223344', N'kuznetsova@mail.ru', N'Казань',
-                DATEADD(YEAR, 2, GETDATE()), 1),
-            (N'Соколов Дмитрий Павлович', '1996-02-08', N'+79005556677', N'sokolov@mail.ru',    N'Новосибирск',
-                DATEADD(YEAR, 1, GETDATE()), 1),
-            (N'Морозова Елена Викторовна','1999-09-30', N'+79008889900', N'morozova@mail.ru',   N'Казань',
-                DATEADD(YEAR, 1, GETDATE()), 1);
+            (N'Иванов Иван Иванович',     '2000-05-14', N'+79001112233', N'ivanov@mail.ru',     N'Москва', DATEADD(YEAR, 1, GETDATE()), 1, N'Подтверждена', NULL, NULL, NULL, NULL, NULL),
+            (N'Петрова Анна Сергеевна',   '1998-11-02', N'+79004445566', N'petrova@mail.ru',    N'Санкт-Петербург', DATEADD(MONTH, -3, GETDATE()), 1, N'Просрочена', NULL, NULL, NULL, NULL, NULL),
+            (N'Сидоров Пётр Алексеевич',  '2005-03-21', N'+79007778899', N'sidorov@mail.ru',    N'Москва', NULL, 1, N'Не загружена', NULL, NULL, NULL, NULL, NULL),
+            (N'Кузнецова Мария Олеговна', '2001-07-19', N'+79002223344', N'kuznetsova@mail.ru', N'Казань', DATEADD(YEAR, 2, GETDATE()), 1, N'Подтверждена', NULL, NULL, NULL, NULL, NULL),
+            (N'Соколов Дмитрий Павлович', '1996-02-08', N'+79005556677', N'sokolov@mail.ru',    N'Новосибирск', DATEADD(YEAR, 1, GETDATE()), 1, N'Подтверждена', NULL, NULL, NULL, NULL, NULL),
+            (N'Морозова Елена Викторовна','1999-09-30', N'+79008889900', N'morozova@mail.ru',   N'Казань', DATEADD(YEAR, 1, GETDATE()), 1, N'Подтверждена', NULL, NULL, NULL, NULL, NULL);
         GO
 
         -- ============================================================
@@ -1064,5 +1184,88 @@ public static class DbInitializer
             WHERE ep.event_id = e.event_id AND ep.partner_id = p.partner_id
         );
         GO
+
+        -- 14. Дополнение для медкнижки (версия 4)
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_status')
+            ALTER TABLE Volunteer ADD med_book_status NVARCHAR(20) NOT NULL DEFAULT N'Не загружена';
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = N'chk_med_book_status')
+            ALTER TABLE Volunteer ADD CONSTRAINT chk_med_book_status CHECK (med_book_status IN (N'Не загружена', N'На проверке', N'Подтверждена', N'Отклонена', N'Просрочена'));
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_scan_path')
+            ALTER TABLE Volunteer ADD med_book_scan_path NVARCHAR(500) NULL;
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_uploaded_at')
+            ALTER TABLE Volunteer ADD med_book_uploaded_at DATETIME NULL;
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_verified_by')
+            ALTER TABLE Volunteer ADD med_book_verified_by INT NULL;
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_verified_at')
+            ALTER TABLE Volunteer ADD med_book_verified_at DATETIME NULL;
+        GO
+
+        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.Volunteer') AND name = N'med_book_notes')
+            ALTER TABLE Volunteer ADD med_book_notes NVARCHAR(MAX) NULL;
+        GO
+
+        IF OBJECT_ID(N'dbo.med_book_verified_by_FK') IS NULL
+            ALTER TABLE Volunteer ADD CONSTRAINT med_book_verified_by_FK FOREIGN KEY (med_book_verified_by) REFERENCES SystemUser(user_id) ON DELETE SET NULL;
+        GO
+
+        -- Пересоздаём триггер медкнижки (CREATE TRIGGER — первой инструкцией батча)
+        IF OBJECT_ID(N'dbo.trg_assignment_medbook') IS NOT NULL
+            DROP TRIGGER trg_assignment_medbook;
+        GO
+
+        CREATE TRIGGER trg_assignment_medbook
+        ON Assignment
+        AFTER INSERT, UPDATE
+        AS
+        BEGIN
+            SET NOCOUNT ON;
+            IF EXISTS (
+                SELECT 1
+                FROM inserted i
+                JOIN Event e ON e.event_id = i.event_id
+                JOIN EventType et ON et.event_type_id = e.event_type_id
+                JOIN Volunteer v ON v.volunteer_id = i.volunteer_id
+                WHERE et.type_name IN (N'Социальное', N'Благотворительное', N'Образовательное')
+                  AND (v.med_book_status <> N'Подтверждена'
+                       OR v.med_book_valid_until IS NULL
+                       OR v.med_book_valid_until < CAST(GETDATE() AS DATE))
+            )
+            BEGIN
+                RAISERROR(N'Для участия в мероприятии требуется действующая медицинская книжка.', 16, 1);
+                ROLLBACK TRANSACTION;
+            END
+        END;
+        GO
+
+        -- Установка статуса для существующих волонтёров
+        UPDATE Volunteer
+        SET med_book_status = N'Не загружена'
+        WHERE med_book_status IS NULL;
+        GO
+
+        -- Демо: даты из прошлых версий считаем подтверждёнными, просроченные метим
+        UPDATE Volunteer
+        SET med_book_status = N'Подтверждена'
+        WHERE (med_book_status IS NULL OR med_book_status = N'Не загружена')
+          AND med_book_valid_until IS NOT NULL
+          AND med_book_valid_until >= CAST(GETDATE() AS DATE);
+        GO
+
+        UPDATE Volunteer
+        SET med_book_status = N'Просрочена'
+        WHERE med_book_status = N'Подтверждена'
+          AND med_book_valid_until < CAST(GETDATE() AS DATE);
+        GO
+
         """;
 }

@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
+using System.Text.Json;
 using VolunteerSystem.Server.Data;
 using VolunteerSystem.Server.Dtos.Auth;
 using VolunteerSystem.Server.Models;
@@ -15,12 +18,14 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly JwtService _jwt;
+    private readonly IWebHostEnvironment _env;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(AppDbContext db, JwtService jwt, ILogger<AuthController> logger)
+    public AuthController(AppDbContext db, JwtService jwt, IWebHostEnvironment env, ILogger<AuthController> logger)
     {
         _db = db;
         _jwt = jwt;
+        _env = env;
         _logger = logger;
     }
 
@@ -51,11 +56,60 @@ public class AuthController : ControllerBase
     }
 
     // POST: /api/auth/register
+    // Регистрация волонтёра. Медкнижка — необязательный блок: можно сразу
+    // приложить скан и указать дату действия (статус «На проверке»).
+    // Принимаем и multipart (форма со сканом), и JSON — чтобы регистрация
+    // не зависела от того, что именно шлёт клиент.
     [HttpPost("register")]
     [AllowAnonymous]
     [EnableRateLimiting("auth")]
-    public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest req, CancellationToken ct)
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<ActionResult<AuthResponse>> Register(CancellationToken ct)
     {
+        var req = new RegisterRequest();
+        IFormFile? scan = null;
+
+        if (Request.HasFormContentType)
+        {
+            var form = await Request.ReadFormAsync(ct);
+            req.FullName = form["fullName"].ToString();
+            req.Phone = form["phone"].ToString();
+            req.Email = form["email"].ToString();
+            req.City = form["city"].ToString();
+            req.LoginName = form["loginName"].ToString();
+            req.Password = form["password"].ToString();
+            if (DateTime.TryParse(form["birthDate"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var bd))
+                req.BirthDate = bd;
+            if (DateOnly.TryParse(form["medBookValidUntil"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var until))
+                req.MedBookValidUntil = until;
+            scan = form.Files.GetFile("medBookScan");
+
+            if (string.IsNullOrWhiteSpace(req.City))
+                _logger.LogWarning("Регистрация: city пуст. Ключи формы: {Keys}", string.Join(", ", form.Keys));
+        }
+        else
+        {
+            using var reader = new StreamReader(Request.Body);
+            var json = await reader.ReadToEndAsync(ct);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                try
+                {
+                    req = JsonSerializer.Deserialize<RegisterRequest>(
+                              json,
+                              new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                          ?? new RegisterRequest();
+                }
+                catch (JsonException)
+                {
+                    return BadRequest(new { message = "Некорректный формат запроса" });
+                }
+            }
+        }
+
+        if (!TryValidateModel(req))
+            return ValidationProblem();
+
         var login = req.LoginName.Trim();
         var email = req.Email.Trim();
 
@@ -77,10 +131,24 @@ public class AuthController : ControllerBase
             phone = req.Phone.Trim(),
             email = email,
             city = req.City.Trim(),
+            med_book_valid_until = req.MedBookValidUntil,
+            med_book_status = "Не загружена",
             personal_data_consent = true,
             is_active = true,
             created_at = DateTime.Now
         };
+
+        // Если при регистрации приложен скан медкнижки — сохраняем его и ставим «На проверке»
+        if (scan is not null)
+        {
+            if (!MedBookStorage.TrySaveScan(_env, scan, out var scanName, out var scanError))
+                return BadRequest(new { message = $"Медкнижка: {scanError}" });
+
+            volunteer.med_book_scan_path = scanName;
+            volunteer.med_book_uploaded_at = DateTime.Now;
+            volunteer.med_book_status = "На проверке";
+        }
+
         _db.Volunteers.Add(volunteer);
 
         var user = new SystemUser
@@ -99,9 +167,10 @@ public class AuthController : ControllerBase
         {
             await _db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
             // гонка: логин/email успели занять между проверкой и вставкой
+            _logger.LogWarning(ex, "Ошибка SaveChanges при регистрации {Login}", login);
             return Conflict(new { message = "Логин или email уже заняты" });
         }
 

@@ -38,7 +38,7 @@ function download(filename: string, content: string | Blob, mime: string) {
 
 function escapeCSV(v: unknown): string {
     const s = String(v ?? '');
-    return s.includes(',') || s.includes('"') || s.includes('\n')
+    return s.includes(';') || s.includes('"') || s.includes('\n') || s.includes('\r')
         ? `"${s.replace(/"/g, '""')}"`
         : s;
 }
@@ -57,14 +57,15 @@ function stamp(): string {
 }
 
 /* ============ CSV ============ */
+/* Разделитель «;» и BOM — так Excel корректно открывает русский текст без настройки. */
 export function exportCSV(filename: string, rows: Record<string, unknown>[]) {
     if (rows.length === 0) return;
     const headers = Object.keys(rows[0]);
     const lines = [
-        headers.join(','),
-        ...rows.map(r => headers.map(h => escapeCSV(r[h])).join(','))
+        headers.join(';'),
+        ...rows.map(r => headers.map(h => escapeCSV(r[h])).join(';'))
     ];
-    download(filename + '.csv', '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8;');
+    download(filename + '.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8;');
 }
 
 /* ============ Excel (SpreadsheetML — открывается в Excel) ============ */

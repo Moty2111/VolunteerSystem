@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { eventsApi } from '../api/events';
 import { assignmentsApi } from '../api/assignments';
+import { reportsApi } from '../api/reports';
+import { exportCSV, exportExcel } from '../utils/export';
 import type { EventItem, EventCommentItem } from '../types';
 import { plural } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
@@ -13,7 +15,8 @@ import { IllCalendar } from '../components/illustrations';
 import {
     Plus, Search, Trash2, Calendar, MapPin, Users, Clock, Check, X,
     Info, UserCheck, ArrowDownUp, ArrowRight, CalendarClock, ImageOff,
-    Eye, UserPlus, Send, MessageSquare, Trash2 as DeleteIcon
+    Eye, UserPlus, Send, MessageSquare, Trash2 as DeleteIcon,
+    FileText, FileSpreadsheet
 } from 'lucide-react';
 import posterSocial from '../assets/events/social.svg';
 import posterEco from '../assets/events/eco.svg';
@@ -43,6 +46,21 @@ const TYPE_POSTERS: Record<number, string> = {
 const posterFor = (typeId: number) => TYPE_POSTERS[typeId] || posterSocial;
 const statusBadge: Record<string, 'info' | 'warning' | 'success' | 'danger'> = {
     'Запланировано': 'info', 'Идёт': 'warning', 'Завершено': 'success', 'Отменено': 'danger'
+};
+
+/* Русские названия колонок участников мероприятия для экспорта */
+const PARTICIPANT_COLUMNS: Record<string, string> = {
+    volunteer_id: 'ID волонтёра',
+    volunteer_name: 'Волонтёр',
+    phone: 'Телефон',
+    email: 'Email',
+    city: 'Город',
+    role_name: 'Роль',
+    hours_actual: 'Часы',
+    confirmed: 'Подтверждено',
+    event_id: 'ID мероприятия',
+    event_name: 'Мероприятие',
+    date_start: 'Дата'
 };
 
 type SortKey = 'date-asc' | 'date-desc' | 'name' | 'participants' | 'status';
@@ -87,6 +105,7 @@ export default function EventsPage() {
     const [comments, setComments] = useState<EventCommentItem[]>([]);
     const [commentText, setCommentText] = useState('');
     const [sendingComment, setSendingComment] = useState(false);
+    const [exportingParticipants, setExportingParticipants] = useState(false);
 
     const canEdit = user?.role === 'Администратор' || user?.role === 'Менеджер';
     const isVolunteer = user?.role === 'Волонтёр';
@@ -158,6 +177,27 @@ export default function EventsPage() {
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Не удалось удалить сообщение');
+        }
+    };
+
+    const handleExportParticipants = async (format: 'csv' | 'excel') => {
+        if (!details) return;
+        setExportingParticipants(true);
+        try {
+            const rows = await reportsApi.eventParticipants(details.eventId) as Record<string, unknown>[];
+            if (!rows.length) { toast.info('Участников пока нет'); return; }
+            const localized = rows.map(row => Object.fromEntries(
+                Object.entries(row).map(([k, v]) => [PARTICIPANT_COLUMNS[k] || k, v])
+            ));
+            const filename = `participants-event-${details.eventId}`;
+            if (format === 'csv') exportCSV(filename, localized);
+            else exportExcel(filename, localized);
+            toast.success('Экспорт участников готов');
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось выгрузить участников');
+        } finally {
+            setExportingParticipants(false);
         }
     };
 
@@ -586,6 +626,26 @@ value = {`${details.assignmentsCount}`}
         </div>
             )
 }
+
+{canEdit && (
+    <div className="event-participants-export">
+        <span className="event-participants-label"><Users size={13} /> Участники:</span>
+        <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleExportParticipants('csv')}
+            disabled={exportingParticipants}
+        >
+            <FileText size={13} /> CSV
+        </button>
+        <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleExportParticipants('excel')}
+            disabled={exportingParticipants}
+        >
+            <FileSpreadsheet size={13} /> Excel
+        </button>
+    </div>
+)}
 
 {/* Обсуждение мероприятия */}
 <div className="event-comments">

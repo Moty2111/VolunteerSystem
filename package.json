@@ -7,6 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:api": "dotnet run --project VolunteerSystem.Server --launch-profile http",
     "test": "node --test tests/*.test.mjs",
+    "test:startup": "dotnet run --project tests/StartupDiagnostics",
     "dev:web": "npm --prefix volunteersystem.client run dev:web",
     "build": "npm --prefix volunteersystem.client run build",
     "install:all": "npm --prefix volunteersystem.client install"

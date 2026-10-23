@@ -374,8 +374,6 @@ try
 }
 catch (IOException ex)
 {
-    app.Logger.LogCritical(
-        "Не удалось занять порт: {Message}. " +
-        "Закройте уже запущенный экземпляр API (netstat -ano | findstr :5084) и запустите снова.", ex.Message);
-    Environment.Exit(1);
+    StartupFailureReporter.Report(ex, Console.Error);
+    Environment.ExitCode = 1;
 }

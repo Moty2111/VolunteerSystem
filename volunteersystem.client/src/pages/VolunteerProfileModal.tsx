@@ -31,13 +31,19 @@ export default function VolunteerProfileModal({ volunteer, onClose, onVolunteerU
     const [year, setYear] = useState<number>(new Date().getFullYear());
     const [loading, setLoading] = useState(true);
     const [medBookDate, setMedBookDate] = useState('');
+    const [medBookStatus, setMedBookStatus] = useState('');
+    const [medBookComment, setMedBookComment] = useState('');
     const [verifying, setVerifying] = useState(false);
     const [openingScan, setOpeningScan] = useState(false);
 
     const canEdit = user?.role === 'Администратор' || user?.role === 'Менеджер';
 
     useEffect(() => {
-        if (volunteer) setMedBookDate(volunteer.medBookValidUntil || '');
+        if (volunteer) {
+            setMedBookDate(volunteer.medBookValidUntil || '');
+            setMedBookStatus(volunteer.medBookStatus || 'Не загружена');
+            setMedBookComment(volunteer.medBookComment || '');
+        }
     }, [volunteer]);
 
     const load = async () => {
@@ -102,23 +108,27 @@ export default function VolunteerProfileModal({ volunteer, onClose, onVolunteerU
         }
     };
 
-    const handleVerify = async (approved: boolean) => {
+    const handleSaveMedBook = async () => {
         if (!volunteer) return;
-        const comment = approved ? null : window.prompt('Причина отклонения медкнижки:');
-        if (!approved && comment === null) return;
+        if (medBookStatus === 'Подтверждена' && !medBookDate) {
+            toast.error('Для подтверждения укажите дату действия медкнижки');
+            return;
+        }
         setVerifying(true);
         try {
-            const updated = await volunteersApi.verifyMedBook(volunteer.volunteerId, {
-                approved,
+            const updated = await volunteersApi.updateMedBook(volunteer.volunteerId, {
                 validUntil: medBookDate || null,
-                comment
+                status: medBookStatus,
+                comment: medBookComment || null
             });
             setMedBookDate(updated.medBookValidUntil || '');
+            setMedBookStatus(updated.medBookStatus || '');
+            setMedBookComment(updated.medBookComment || '');
             onVolunteerUpdated?.(updated);
-            toast.success(approved ? 'Медкнижка подтверждена' : 'Медкнижка отклонена');
+            toast.success('Данные медкнижки обновлены');
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
-            toast.error(err.response?.data?.message || 'Ошибка');
+            toast.error(err.response?.data?.message || 'Ошибка при обновлении медкнижки');
         } finally {
             setVerifying(false);
         }
@@ -268,25 +278,54 @@ export default function VolunteerProfileModal({ volunteer, onClose, onVolunteerU
                 </Button>
             )}
 
-            {canEdit && volunteer.medBookStatus === 'На проверке' && (
-                <>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input
-                            type="date"
-                            className="input"
-                            style={{ width: 160 }}
-                            value={medBookDate}
-                            onChange={e => setMedBookDate(e.target.value)}
-                            aria-label="Дата действия медкнижки"
-                        />
-                        <Button variant="primary" icon={<Check size={14} />} onClick={() => handleVerify(true)} disabled={verifying}>
-                            Подтвердить
-                        </Button>
-                        <Button variant="danger" onClick={() => handleVerify(false)} disabled={verifying}>
-                            Отклонить
+            {canEdit && (
+                <div style={{
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                    padding: 14, borderRadius: 'var(--r-md)',
+                    background: 'var(--surface-2)', border: '1px solid var(--border)',
+                    width: '100%'
+                }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div className="field" style={{ flex: '1 1 160px', marginBottom: 0 }}>
+                            <label className="field-label">Статус</label>
+                            <select
+                                className="select"
+                                value={medBookStatus}
+                                onChange={e => setMedBookStatus(e.target.value)}
+                                aria-label="Статус медкнижки"
+                            >
+                                <option value="Не загружена">Не загружена</option>
+                                <option value="На проверке">На проверке</option>
+                                <option value="Подтверждена">Подтверждена</option>
+                                <option value="Отклонена">Отклонена</option>
+                                <option value="Просрочена">Просрочена</option>
+                            </select>
+                        </div>
+                        <div className="field" style={{ flex: '1 1 160px', marginBottom: 0 }}>
+                            <label className="field-label">Действует до</label>
+                            <input
+                                type="date"
+                                className="input"
+                                value={medBookDate}
+                                onChange={e => setMedBookDate(e.target.value)}
+                                aria-label="Дата действия медкнижки"
+                            />
+                        </div>
+                        <Button variant="primary" icon={<Check size={14} />} onClick={handleSaveMedBook} disabled={verifying}>
+                            {verifying ? 'Сохраняем…' : 'Сохранить'}
                         </Button>
                     </div>
-                </>
+                    <div className="field" style={{ marginBottom: 0 }}>
+                        <label className="field-label">Комментарий</label>
+                        <input
+                            type="text"
+                            className="input"
+                            placeholder="Причина отклонения или пометка"
+                            value={medBookComment}
+                            onChange={e => setMedBookComment(e.target.value)}
+                        />
+                    </div>
+                </div>
             )}
         </div>
     </div>

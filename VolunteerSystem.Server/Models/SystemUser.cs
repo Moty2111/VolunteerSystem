@@ -19,6 +19,15 @@ public partial class SystemUser
 
     public DateTime created_at { get; set; }
 
+    /// <summary>Токен сброса пароля (для ссылки «забыли пароль»).</summary>
+    public string? password_reset_token { get; set; }
+
+    /// <summary>Срок действия токена сброса пароля.</summary>
+    public DateTime? password_reset_expires { get; set; }
+
+    /// <summary>true — при следующем входе пользователь обязан сменить пароль.</summary>
+    public bool must_change_password { get; set; }
+
     public virtual ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
 
     public virtual ICollection<EventComment> Comments { get; set; } = new List<EventComment>();

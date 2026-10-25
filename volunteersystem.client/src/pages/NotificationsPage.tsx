@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { notificationsApi, type Notification } from '../api/notifications';
 import { useToast } from '../components/Toast';
 import { notifStore } from '../utils/notifStore';
+import EventDetailsModal from '../components/EventDetailsModal';
 import { EmptyState, Skeleton, Badge } from '../components/ui';
 import { IllActivity } from '../components/illustrations';
 import {
@@ -56,6 +57,7 @@ export default function NotificationsPage() {
     const [filter, setFilter] = useState<'all' | Notification['kind']>('all');
     const [settings, setSettings] = useState<Settings>(loadSettings);
     const [unread, setUnread] = useState(() => notifStore.unread);
+    const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
 
     useEffect(() => {
         (async () => {
@@ -77,6 +79,12 @@ export default function NotificationsPage() {
     const markAllRead = () => {
         notifStore.markAllRead();
         toast.success('Все уведомления отмечены как прочитанные');
+    };
+
+    /* Клик по уведомлению: помечаем прочитанным и (если связано с мероприятием) открываем подробности */
+    const openNotification = (n: Notification) => {
+        notifStore.markRead(n.id);
+        if (n.eventId) setSelectedEventId(n.eventId);
     };
 
     const filtered = useMemo(
@@ -194,16 +202,16 @@ export default function NotificationsPage() {
                                             initial={{ opacity: 0, y: 8 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             transition={{ delay: Math.min(i * 0.03, 0.3) }}
-                                            onClick={() => notifStore.markRead(n.id)}
+                                            onClick={() => openNotification(n)}
                                             role="button"
                                             tabIndex={0}
                                             onKeyDown={e => {
                                                 if (e.key === 'Enter' || e.key === ' ') {
                                                     e.preventDefault();
-                                                    notifStore.markRead(n.id);
+                                                    openNotification(n);
                                                 }
                                             }}
-                                            title="Отметить как прочитанное"
+                                            title={n.eventId ? 'Открыть подробности мероприятия' : 'Отметить как прочитанное'}
                                         >
                                             <div
                                                 className="notif-icon"
@@ -332,6 +340,10 @@ export default function NotificationsPage() {
                     </div>
                 </div>
             </div>
+
+            {selectedEventId != null && (
+                <EventDetailsModal eventId={selectedEventId} onClose={() => setSelectedEventId(null)} />
+            )}
         </div>
     );
 }

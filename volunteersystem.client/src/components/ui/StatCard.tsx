@@ -13,19 +13,33 @@ interface Props {
   onClick?: () => void;
   /** Кнопка «Подробнее» в подвале карточки. */
   onDetails?: () => void;
+  /** Мини-график (спарклайн) внизу карточки. */
+  spark?: number[];
 }
 
-export default function StatCard({ label, value, icon, color, trend, delay = 0, onClick, onDetails }: Props) {
+export default function StatCard({ label, value, icon, color, trend, delay = 0, onClick, onDetails, spark }: Props) {
   const accent = color || 'var(--primary)';
   /* длинные текстовые значения (уровни, статусы) ужимаются, чтобы не вылезать за карточку */
   const isText = typeof value === 'string' && value.trim().length > 4 && !/^[\d\s.,%чa-zA-Z-]*$/.test(value.trim());
+
+  /* спарклайн: нормализуем по максимуму, рисуем ломаную */
+  const sparkPoints = (() => {
+    if (!spark || spark.length < 2) return null;
+    const max = Math.max(...spark, 1);
+    const n = spark.length;
+    return spark.map((v, i) => {
+      const x = (i / (n - 1)) * 100;
+      const y = 26 - (v / max) * 22;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+  })();
   return (
     <motion.div
       className={`stat-card${onClick ? ' clickable' : ''}`}
       style={{ ['--accent-color' as string]: accent }}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.35 }}
+      transition={{ delay, duration: 0.5, ease: [0.22, 0.75, 0.3, 1] }}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -43,6 +57,21 @@ export default function StatCard({ label, value, icon, color, trend, delay = 0, 
         {icon && <div className="stat-card-icon">{icon}</div>}
       </div>
       <div className={`stat-card-value num${isText ? ' is-text' : ''}`}>{value}</div>
+      {sparkPoints && (
+        <div className="stat-card-spark" aria-hidden="true">
+          <svg viewBox="0 0 100 28" preserveAspectRatio="none">
+            <polyline
+              points={sparkPoints}
+              fill="none"
+              stroke={accent}
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <polygon points={`0,28 ${sparkPoints} 100,28`} fill={accent} opacity="0.12" />
+          </svg>
+        </div>
+      )}
       {(trend || onDetails) && (
         <div className="stat-card-foot">
           {trend && (

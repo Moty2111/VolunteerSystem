@@ -4,6 +4,7 @@ export interface AuthResponse {
     role: string;
     volunteerId: number | null;
     expiresAt: string;
+    mustChangePassword?: boolean;
 }
 
 export interface LoginRequest {
@@ -93,6 +94,16 @@ export interface EventCommentItem {
     authorName: string;
     text: string;
     createdAt: string;
+}
+
+export interface EventParticipantRow {
+    event_id: number;
+    event_name: string;
+    date_start: string;
+    volunteer_name: string;
+    role_name: string;
+    hours_actual: number | null;
+    confirmed: boolean;
 }
 
 export interface Assignment {

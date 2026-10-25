@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VolunteerSystem.Server.Data;
 using VolunteerSystem.Server.Dtos.Events;
+using VolunteerSystem.Server.Dtos.Reports;
 using VolunteerSystem.Server.Models;
 
 namespace VolunteerSystem.Server.Controllers;
@@ -167,6 +168,23 @@ public class EventsController : ControllerBase
         _db.EventComments.Remove(comment);
         await _db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    // ============================================================
+    // GET: /api/events/10/participants — список участников мероприятия
+    // Доступен всем авторизованным (в т.ч. волонтёрам для экспорта)
+    // ============================================================
+    [HttpGet("{id:int}/participants")]
+    public async Task<ActionResult<IEnumerable<EventParticipantRow>>> GetParticipants(int id, CancellationToken ct)
+    {
+        if (!await _db.Events.AnyAsync(e => e.event_id == id, ct))
+            return NotFound(new { message = "Мероприятие не найдено" });
+
+        var rows = await _db.Database
+            .SqlQueryRaw<EventParticipantRow>("SELECT * FROM vw_EventParticipants WHERE event_id = {0}", id)
+            .ToListAsync(ct);
+
+        return Ok(rows);
     }
 
     // ============================================================

@@ -15,5 +15,10 @@ export const usersApi = {
     updateRole: (id: number, role: string) =>
         api.put(`/users/${id}/role`, { role }).then(r => r.data),
     updateActive: (id: number, isActive: boolean) =>
-        api.put(`/users/${id}/active`, { isActive }).then(r => r.data)
+        api.put(`/users/${id}/active`, { isActive }).then(r => r.data),
+    resetPassword: (id: number, newPassword?: string) =>
+        api.post<{ message: string; tempPassword: string }>(
+            `/users/${id}/reset-password`,
+            { newPassword: newPassword ?? null }
+        ).then(r => r.data)
 };

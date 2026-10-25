@@ -23,5 +23,11 @@ export const authApi = {
     me: () => api.get('/auth/me').then(r => r.data),
 
     changePassword: (data: { currentPassword: string; newPassword: string }) =>
-        api.post<{ message: string }>('/auth/change-password', data).then(r => r.data)
+        api.post<{ message: string }>('/auth/change-password', data).then(r => r.data),
+
+    forgotPassword: (email: string) =>
+        api.post<{ message: string; demoResetLink?: string }>('/auth/forgot-password', { email }).then(r => r.data),
+
+    resetPassword: (token: string, newPassword: string) =>
+        api.post<{ message: string }>('/auth/reset-password', { token, newPassword }).then(r => r.data)
 };

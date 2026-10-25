@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -87,7 +88,63 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
+    // POST: /api/users/5/reset-password — сброс пароля админом.
+    // Ставит временный пароль и флаг обязательной смены при следующем входе.
+    [HttpPost("{id:int}/reset-password")]
+    [Authorize(Roles = "Администратор")]
+    public async Task<IActionResult> ResetPassword(int id, [FromBody] AdminResetPasswordRequest dto, CancellationToken ct)
+    {
+        var user = await _db.SystemUsers.FindAsync([id], ct);
+        if (user is null) return NotFound(new { message = "Пользователь не найден" });
+
+        var tempPassword = string.IsNullOrWhiteSpace(dto.NewPassword)
+            ? GenerateTempPassword()
+            : dto.NewPassword.Trim();
+
+        user.password_hash = tempPassword;
+        user.must_change_password = true;
+        user.password_reset_token = null;
+        user.password_reset_expires = null;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Админ сбросил пароль пользователя {Login}", user.login_name);
+
+        return Ok(new
+        {
+            message = "Пароль сброшен — пользователь сменит его при следующем входе",
+            tempPassword
+        });
+    }
+
     /// <summary>id текущего пользователя; 0 — если claim отсутствует или неверен.</summary>
     private int CurrentUserId() =>
         int.TryParse(User.FindFirst("UserId")?.Value, out var id) ? id : 0;
+
+    /// <summary>Временный пароль, удовлетворяющий политике (без похожих символов).</summary>
+    private static string GenerateTempPassword()
+    {
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lower = "abcdefghijkmnopqrstuvwxyz";
+        const string digits = "23456789";
+        const string special = "!@#$%^&*";
+        var pool = upper + lower + digits + special;
+
+        var rng = RandomNumberGenerator.Create();
+        int IndexIn(string set)
+        {
+            var b = new byte[4];
+            rng.GetBytes(b);
+            return (int)(BitConverter.ToUInt32(b, 0) % (uint)set.Length);
+        }
+
+        var chars = new char[10];
+        chars[0] = upper[IndexIn(upper)];
+        chars[1] = lower[IndexIn(lower)];
+        chars[2] = digits[IndexIn(digits)];
+        chars[3] = special[IndexIn(special)];
+        for (var i = 4; i < chars.Length; i++)
+            chars[i] = pool[IndexIn(pool)];
+
+        return new string(chars);
+    }
 }

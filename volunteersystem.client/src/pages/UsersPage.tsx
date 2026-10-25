@@ -72,6 +72,19 @@ export default function UsersPage() {
         }
     };
 
+    const handleResetPassword = async (u: SystemUserItem) => {
+        if (!window.confirm(
+            `Сбросить пароль пользователя «${u.loginName}»?\nОн получит временный пароль и сменит его при следующем входе.`
+        )) return;
+        try {
+            const res = await usersApi.resetPassword(u.userId);
+            toast.success(`Временный пароль для «${u.loginName}»: ${res.tempPassword}`);
+        } catch (e: unknown) {
+            const err = e as { response?: { data?: { message?: string } } };
+            toast.error(err.response?.data?.message || 'Не удалось сбросить пароль');
+        }
+    };
+
     return (
         <div>
             <div className="page-header">
@@ -180,6 +193,16 @@ export default function UsersPage() {
                                         <td>{new Date(u.createdAt).toLocaleDateString('ru-RU')}</td>
                                         <td>
                                             <div className="row-actions">
+                                                {!isMe && (
+                                                    <button
+                                                        className="btn btn-secondary btn-sm"
+                                                        onClick={() => handleResetPassword(u)}
+                                                        title="Сбросить пароль (пользователь сменит его при следующем входе)"
+                                                    >
+                                                        <KeyRound size={14} />
+                                                        Сбросить пароль
+                                                    </button>
+                                                )}
                                                 <button
                                                     className={`btn btn-sm ${u.isActive ? 'btn-secondary' : 'btn-primary'}`}
                                                     onClick={() => handleToggleActive(u)}

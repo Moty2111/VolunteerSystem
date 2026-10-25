@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
-    ResponsiveContainer, AreaChart, Area, BarChart, Bar,
+    ResponsiveContainer, BarChart, Bar,
     XAxis, YAxis, Tooltip, CartesianGrid
 } from 'recharts';
 import Modal from '../../components/Modal';
@@ -9,7 +9,8 @@ import type { Assignment, EventItem } from '../../types';
 import type { VolunteerSkill } from '../../api/skills';
 import { getBadges, type VolunteerLevel } from '../../utils/level';
 import { formatHours, plural } from '../../utils/format';
-import { calcMonthly } from './common';
+import { calcMonthly, HoursChart } from './common';
+import { sortRows, SortChips, type SortState } from './sortChips';
 import { isLanguageLevel, skillLevelVariant } from '../../utils/skillLevels';
 import {
     Clock, CalendarCheck, Award, Trophy, BadgeCheck, Target,
@@ -26,6 +27,8 @@ interface Props {
     skills: VolunteerSkill[];
     totalHours: number;
     level: VolunteerLevel;
+    /** Переопределение заголовка модалки (например, для админки). */
+    title?: string;
 }
 
 const TITLES: Record<StatDetailKind, string> = {
@@ -74,7 +77,7 @@ const listStyle: React.CSSProperties = {
 const fmtDate = (iso: string) =>
     new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 
-function SummaryBox({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+export function SummaryBox({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
     return (
         <div style={cardStyle}>
             <div style={{ fontSize: 11, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700 }}>
@@ -86,45 +89,7 @@ function SummaryBox({ label, value, hint }: { label: string; value: string | num
     );
 }
 
-function HoursChart({ data }: { data: { month: string; hours: number }[] }) {
-    const total = data.reduce((s, b) => s + b.hours, 0);
-    if (total === 0) {
-        return (
-            <div style={{ padding: '22px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-                Пока нет подтверждённых часов — график появится после первого мероприятия.
-            </div>
-        );
-    }
-    return (
-        <ResponsiveContainer width="100%" height={210}>
-            <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
-                <defs>
-                    <linearGradient id="statModalHoursGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#ff4d8d" stopOpacity={0.45} />
-                        <stop offset="100%" stopColor="#ff4d8d" stopOpacity={0} />
-                    </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: 'var(--text-3)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--text-3)', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                    contentStyle={{
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border-2)',
-                        borderRadius: 10,
-                        fontSize: 12,
-                        color: 'var(--text)'
-                    }}
-                    labelStyle={{ color: 'var(--text-2)' }}
-                    formatter={(value) => [`${value} ч`, 'Часы']}
-                />
-                <Area type="monotone" dataKey="hours" stroke="#ff4d8d" strokeWidth={2.5} fill="url(#statModalHoursGrad)" />
-            </AreaChart>
-        </ResponsiveContainer>
-    );
-}
-
-function AssignmentRow({ a }: { a: Assignment }) {
+export function AssignmentRow({ a }: { a: Assignment }) {
     const future = new Date(a.eventDateStart) >= new Date();
     return (
         <div style={{
@@ -159,8 +124,13 @@ function AssignmentRow({ a }: { a: Assignment }) {
 }
 
 export default function StatDetailsModal({
-    kind, onClose, assignments, events, skills, totalHours, level
+    kind, onClose, assignments, events, skills, totalHours, level, title
 }: Props) {
+    const [typeSort, setTypeSort] = useState<SortState>({ key: 'hours', dir: -1 });
+    const [recentSort, setRecentSort] = useState<SortState>({ key: 'date', dir: -1 });
+    const [upSort, setUpSort] = useState<SortState>({ key: 'date', dir: 1 });
+    const [pastSort, setPastSort] = useState<SortState>({ key: 'date', dir: -1 });
+
     const monthly = useMemo(() => calcMonthly(assignments), [assignments]);
     const confirmedHours = useMemo(
         () => assignments.filter(a => a.confirmed).reduce((s, a) => s + Number(a.hoursActual || 0), 0),
@@ -168,22 +138,36 @@ export default function StatDetailsModal({
     );
     const confirmedCount = useMemo(() => assignments.filter(a => a.confirmed).length, [assignments]);
     const upcoming = useMemo(
-        () => [...assignments]
-            .filter(a => new Date(a.eventDateStart) >= new Date())
-            .sort((a, b) => new Date(a.eventDateStart).getTime() - new Date(b.eventDateStart).getTime()),
-        [assignments]
+        () => sortRows(
+            assignments.filter(a => new Date(a.eventDateStart) >= new Date()),
+            upSort,
+            {
+                date: a => new Date(a.eventDateStart).getTime(),
+                hours: a => Number(a.hoursActual || 0),
+                name: a => a.eventName,
+            }
+        ),
+        [assignments, upSort]
     );
     const past = useMemo(
-        () => [...assignments]
-            .filter(a => new Date(a.eventDateStart) < new Date())
-            .sort((a, b) => new Date(b.eventDateStart).getTime() - new Date(a.eventDateStart).getTime()),
-        [assignments]
+        () => sortRows(
+            assignments.filter(a => new Date(a.eventDateStart) < new Date()),
+            pastSort,
+            {
+                date: a => new Date(a.eventDateStart).getTime(),
+                hours: a => Number(a.hoursActual || 0),
+                name: a => a.eventName,
+            }
+        ),
+        [assignments, pastSort]
     );
     const recent = useMemo(
-        () => [...assignments]
-            .sort((a, b) => new Date(b.eventDateStart).getTime() - new Date(a.eventDateStart).getTime())
-            .slice(0, 6),
-        [assignments]
+        () => sortRows(assignments, recentSort, {
+            date: a => new Date(a.eventDateStart).getTime(),
+            hours: a => Number(a.hoursActual || 0),
+            name: a => a.eventName,
+        }).slice(0, 6),
+        [assignments, recentSort]
     );
 
     const byType = useMemo(() => {
@@ -196,10 +180,20 @@ export default function StatDetailsModal({
             row.count += 1;
             map.set(name, row);
         });
-        return [...map.entries()]
-            .map(([name, v]) => ({ name, ...v }))
-            .sort((a, b) => b.hours - a.hours);
+        return [...map.entries()].map(([name, v]) => ({ name, ...v }));
     }, [assignments, events]);
+
+    const sortedByType = useMemo(
+        () => sortRows(byType, typeSort, {
+            hours: t => t.hours,
+            count: t => t.count,
+        }),
+        [byType, typeSort]
+    );
+    const maxTypeHours = useMemo(
+        () => byType.reduce((m, t) => Math.max(m, t.hours), 0),
+        [byType]
+    );
 
     const monthlyCounts = useMemo(() => {
         const now = new Date();
@@ -222,7 +216,7 @@ export default function StatDetailsModal({
     const badges = getBadges(totalHours);
 
     return (
-        <Modal open title={TITLES[kind]} onClose={onClose} wide>
+        <Modal open title={title || TITLES[kind]} onClose={onClose} wide>
             {kind === 'hours' && (
                 <>
                     <div style={gridStyle}>
@@ -236,12 +230,20 @@ export default function StatDetailsModal({
                     <HoursChart data={monthly.buckets} />
 
                     <h4 style={{ ...sectionTitle, marginTop: 20 }}><Clock size={15} /> По типам мероприятий</h4>
-                    {byType.length === 0 ? (
+                    <SortChips
+                        options={[
+                            { key: 'hours', label: 'По часам' },
+                            { key: 'count', label: 'По числу' },
+                        ]}
+                        value={typeSort}
+                        onChange={setTypeSort}
+                    />
+                    {sortedByType.length === 0 ? (
                         <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Пока нет данных.</div>
                     ) : (
                         <div style={listStyle}>
-                            {byType.map(t => {
-                                const max = byType[0]?.hours || 1;
+                            {sortedByType.map(t => {
+                                const max = maxTypeHours || 1;
                                 return (
                                     <div key={t.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                         <span style={{ width: 120, fontSize: 12, color: 'var(--text-2)' }}>{t.name}</span>
@@ -258,6 +260,15 @@ export default function StatDetailsModal({
                     )}
 
                     <h4 style={{ ...sectionTitle, marginTop: 20 }}><CalendarCheck size={15} /> Последние назначения</h4>
+                    <SortChips
+                        options={[
+                            { key: 'date', label: 'По дате' },
+                            { key: 'hours', label: 'По часам' },
+                            { key: 'name', label: 'По названию' },
+                        ]}
+                        value={recentSort}
+                        onChange={setRecentSort}
+                    />
                     <div style={listStyle}>
                         {recent.map(a => <AssignmentRow key={a.assignmentId} a={a} />)}
                     </div>
@@ -295,6 +306,15 @@ export default function StatDetailsModal({
                     </ResponsiveContainer>
 
                     <h4 style={{ ...sectionTitle, marginTop: 20 }}><CalendarClock size={15} /> Предстоящие</h4>
+                    <SortChips
+                        options={[
+                            { key: 'date', label: 'По дате' },
+                            { key: 'hours', label: 'По часам' },
+                            { key: 'name', label: 'По названию' },
+                        ]}
+                        value={upSort}
+                        onChange={setUpSort}
+                    />
                     {upcoming.length === 0 ? (
                         <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Предстоящих назначений нет.</div>
                     ) : (
@@ -302,6 +322,15 @@ export default function StatDetailsModal({
                     )}
 
                     <h4 style={{ ...sectionTitle, marginTop: 20 }}><CheckCircle2 size={15} /> История</h4>
+                    <SortChips
+                        options={[
+                            { key: 'date', label: 'По дате' },
+                            { key: 'hours', label: 'По часам' },
+                            { key: 'name', label: 'По названию' },
+                        ]}
+                        value={pastSort}
+                        onChange={setPastSort}
+                    />
                     {past.length === 0 ? (
                         <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Завершённых назначений пока нет.</div>
                     ) : (

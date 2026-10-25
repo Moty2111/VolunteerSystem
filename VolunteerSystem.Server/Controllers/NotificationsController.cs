@@ -12,6 +12,7 @@ public class NotificationDto
     public string Kind { get; set; } = string.Empty;
     public string Text { get; set; } = string.Empty;
     public DateTime At { get; set; }
+    public int? EventId { get; set; }
 }
 
 [ApiController]
@@ -58,7 +59,8 @@ public class NotificationsController : ControllerBase
                 Text = isVolunteer
                     ? $"Вы назначены на «{a._event?.event_name ?? "мероприятие"}»"
                     : $"{a.volunteer?.full_name ?? "Волонтёр"} назначен на «{a._event?.event_name ?? "мероприятие"}»",
-                At = a.assigned_at
+                At = a.assigned_at,
+                EventId = a.event_id
             });
         }
 
@@ -77,7 +79,8 @@ public class NotificationsController : ControllerBase
                 Id = $"e-{e.event_id}",
                 Kind = "event",
                 Text = $"Скоро: «{e.event_name}» — {e.date_start:dd MMM}",
-                At = e.created_at
+                At = e.created_at,
+                EventId = e.event_id
             });
         }
 

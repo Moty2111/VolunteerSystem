@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -5,6 +6,7 @@ import {
 } from 'recharts';
 import type { EventItem, Assignment, Volunteer } from '../../types';
 import { Avatar, Button, EmptyState, Skeleton } from '../../components/ui';
+import Modal from '../../components/Modal';
 import { IllSprout, IllCalendar, IllActivity } from '../../components/illustrations';
 import { formatHours, plural } from '../../utils/format';
 import { MOCK_RECENT_ACTIVITY } from '../../mocks/dashboard';
@@ -83,6 +85,45 @@ export function calcMonthly(assignments: Assignment[]) {
     return { buckets, total };
 }
 
+/* график часов по месяцам — используется в карточке и в модалке статистики */
+export function HoursChart({ data }: { data: { month: string; hours: number }[] }) {
+    const total = data.reduce((s, b) => s + b.hours, 0);
+    if (total === 0) {
+        return (
+            <div style={{ padding: '22px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 13 }}>
+                Пока нет подтверждённых часов — график появится после первого мероприятия.
+            </div>
+        );
+    }
+    return (
+        <ResponsiveContainer width="100%" height={210}>
+            <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+                <defs>
+                    <linearGradient id="hoursChartGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#ff4d8d" stopOpacity={0.45} />
+                        <stop offset="100%" stopColor="#ff4d8d" stopOpacity={0} />
+                    </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-3)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: 'var(--text-3)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                    contentStyle={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border-2)',
+                        borderRadius: 10,
+                        fontSize: 12,
+                        color: 'var(--text)'
+                    }}
+                    labelStyle={{ color: 'var(--text-2)' }}
+                    formatter={(value) => [`${value} ч`, 'Часы']}
+                />
+                <Area type="monotone" dataKey="hours" stroke="#ff4d8d" strokeWidth={2.5} fill="url(#hoursChartGrad)" />
+            </AreaChart>
+        </ResponsiveContainer>
+    );
+}
+
 export function calcUpcoming(events: EventItem[], n = 4) {
     return [...events]
         .filter(e => new Date(e.dateStart) >= new Date() && e.status !== 'Отменено')
@@ -131,10 +172,12 @@ export function Hero({
     );
 }
 
-export function MonthlyHoursCard({ assignments, loading, title = 'Часы по месяцам' }: {
+export function MonthlyHoursCard({ assignments, loading, title = 'Часы по месяцам', onDetails }: {
     assignments: Assignment[];
     loading: boolean;
     title?: string;
+    /** «Подробнее» — открывает модалку с графиком и деталями. */
+    onDetails?: () => void;
 }) {
     const { buckets, total } = calcMonthly(assignments);
 
@@ -142,9 +185,16 @@ export function MonthlyHoursCard({ assignments, loading, title = 'Часы по 
         <div className="card">
             <div className="card-header">
                 <h3 className="card-title"><TrendingUp size={16} /> {title}</h3>
-                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                    {loading ? 'Последние 12 месяцев' : `Последние 12 месяцев · ${total.toFixed(1)} ч`}
-                </span>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                        {loading ? 'Последние 12 месяцев' : `Последние 12 месяцев · ${total.toFixed(1)} ч`}
+                    </span>
+                    {onDetails && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={onDetails}>
+                            Подробнее
+                        </button>
+                    )}
+                </div>
             </div>
             {loading ? (
                 <Skeleton height={220} />
@@ -158,7 +208,7 @@ export function MonthlyHoursCard({ assignments, loading, title = 'Часы по 
                 <ResponsiveContainer width="100%" height={220}>
                     <AreaChart data={buckets} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
                         <defs>
-                            <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
+                            <linearGradient id="hoursChartGrad" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor="#ff4d8d" stopOpacity={0.45} />
                                 <stop offset="100%" stopColor="#ff4d8d" stopOpacity={0} />
                             </linearGradient>
@@ -177,7 +227,7 @@ export function MonthlyHoursCard({ assignments, loading, title = 'Часы по 
                             labelStyle={{ color: 'var(--text-2)' }}
                             formatter={(value) => [`${value} ч`, 'Часы']}
                         />
-                        <Area type="monotone" dataKey="hours" stroke="#ff4d8d" strokeWidth={2.5} fill="url(#hoursGrad)" />
+                        <Area type="monotone" dataKey="hours" stroke="#ff4d8d" strokeWidth={2.5} fill="url(#hoursChartGrad)" />
                     </AreaChart>
                 </ResponsiveContainer>
             )}
@@ -185,7 +235,8 @@ export function MonthlyHoursCard({ assignments, loading, title = 'Часы по 
     );
 }
 
-export function EventsStatusCard({ events, loading }: { events: EventItem[]; loading: boolean }) {
+export function EventsStatusCard({ events, loading, detailButton }: { events: EventItem[]; loading: boolean; detailButton?: boolean }) {
+    const [statusOpen, setStatusOpen] = useState(false);
     const eventsByStatus = (() => {
         const map = new Map<string, number>();
         events.forEach(e => map.set(e.status, (map.get(e.status) || 0) + 1));
@@ -196,6 +247,11 @@ export function EventsStatusCard({ events, loading }: { events: EventItem[]; loa
         <div className="card">
             <div className="card-header">
                 <h3 className="card-title"><Calendar size={16} /> Мероприятия</h3>
+                {detailButton && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setStatusOpen(true)}>
+                        Подробнее
+                    </button>
+                )}
             </div>
             {loading ? (
                 <Skeleton height={220} />
@@ -247,6 +303,58 @@ export function EventsStatusCard({ events, loading }: { events: EventItem[]; loa
                     </div>
                 </>
             )}
+            <Modal open={statusOpen} title="Мероприятия — подробная статистика" onClose={() => setStatusOpen(false)} wide>
+                {loading ? (
+                    <Skeleton height={220} />
+                ) : eventsByStatus.length === 0 ? (
+                    <EmptyState
+                        illustration={<IllCalendar size={90} />}
+                        title="Пока нет мероприятий"
+                        text="Создайте первое и пригласите команду"
+                    />
+                ) : (
+                    <>
+                        <ResponsiveContainer width="100%" height={180}>
+                            <PieChart>
+                                <Pie
+                                    data={eventsByStatus}
+                                    dataKey="count"
+                                    nameKey="status"
+                                    innerRadius={40}
+                                    outerRadius={75}
+                                    paddingAngle={3}
+                                    stroke="none"
+                                >
+                                    {eventsByStatus.map((s, i) => (
+                                        <Cell key={i} fill={STATUS_COLORS[s.status] || '#94a3b8'} />
+                                    ))}
+                                </Pie>
+                                <Tooltip
+                                    contentStyle={{
+                                        background: 'var(--surface)',
+                                        border: '1px solid var(--border-2)',
+                                        borderRadius: 10,
+                                        fontSize: 12,
+                                        color: 'var(--text)'
+                                    }}
+                                />
+                            </PieChart>
+                        </ResponsiveContainer>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                            {eventsByStatus.map(s => (
+                                <div key={s.status} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
+                                    <span style={{
+                                        width: 10, height: 10, borderRadius: '50%',
+                                        background: STATUS_COLORS[s.status] || '#94a3b8'
+                                    }} />
+                                    <span style={{ color: 'var(--text-2)', flex: 1 }}>{s.status}</span>
+                                    <strong className="num">{s.count}</strong>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </Modal>
         </div>
     );
 }
@@ -321,7 +429,7 @@ export function MedAlert({ expired, expiring, to = '/volunteers', linkText = 'О
 
     return (
         <div className="dash-alert">
-            <span className="dash-alert-icon"><AlertTriangle size={18} /></span>
+            <span className="dash-alert-icon live"><AlertTriangle size={18} /></span>
             <div className="dash-alert-body">
                 <strong>Медицинские книжки</strong>
                 <span>

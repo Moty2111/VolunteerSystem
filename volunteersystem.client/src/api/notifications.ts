@@ -5,6 +5,7 @@ export interface Notification {
     kind: 'assignment' | 'confirm' | 'event' | 'partner';
     text: string;
     at: string;
+    eventId?: number | null;
 }
 
 export const notificationsApi = {

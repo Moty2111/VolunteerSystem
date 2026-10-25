@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { AuthResponse } from '../types';
 
 interface AuthUser {
     loginName: string;
     role: string;
     volunteerId: number | null;
+    mustChangePassword?: boolean;
 }
 
 interface AuthContextValue {
@@ -13,6 +14,7 @@ interface AuthContextValue {
     isAuthenticated: boolean;
     login: (data: AuthResponse) => void;
     logout: () => void;
+    clearMustChangePassword: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -29,7 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u: AuthUser = {
             loginName: data.loginName,
             role: data.role,
-            volunteerId: data.volunteerId
+            volunteerId: data.volunteerId,
+            mustChangePassword: data.mustChangePassword
         };
         localStorage.setItem('user', JSON.stringify(u));
         setToken(data.token);
@@ -43,14 +46,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
     };
 
+    const clearMustChangePassword = () => {
+        setUser(prev => {
+            if (!prev) return prev;
+            const next: AuthUser = { ...prev, mustChangePassword: false };
+            localStorage.setItem('user', JSON.stringify(next));
+            return next;
+        });
+    };
+
     return (
         <AuthContext.Provider
-      value= {{ user, token, isAuthenticated: !!token, login, logout }
-}
-    >
-{ children }
-    </AuthContext.Provider>
-  );
+            value={{ user, token, isAuthenticated: !!token, login, logout, clearMustChangePassword }}
+        >
+            {children}
+        </AuthContext.Provider>
+    );
 }
 
 export function useAuth() {

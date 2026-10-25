@@ -43,6 +43,7 @@ export default function LoginPage() {
   const [resetMode, setResetMode] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [resetLink, setResetLink] = useState('');
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -50,8 +51,21 @@ export default function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (resetMode) {
-      // демо-режим: реальной отправки нет, просто показываем подтверждение
-      setResetSent(true);
+      setError('');
+      setLoading(true);
+      try {
+        const res = await authApi.forgotPassword(resetEmail);
+        setResetSent(true);
+        setResetLink(res.demoResetLink || '');
+        if (res.demoResetLink) {
+          window.open(res.demoResetLink, '_blank', 'noopener');
+        }
+      } catch (err: unknown) {
+        const e2 = err as { response?: { data?: { message?: string } } };
+        setError(e2.response?.data?.message || 'Не удалось получить ссылку для сброса');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     setError('');
@@ -59,7 +73,7 @@ export default function LoginPage() {
     try {
       const res = await authApi.login({ loginName, password });
       login(res);
-      navigate('/dashboard');
+      navigate(res.mustChangePassword ? '/change-password' : '/dashboard');
     } catch (err: unknown) {
       const e2 = err as { response?: { data?: { message?: string } } };
       setError(e2.response?.data?.message || 'Неверный логин или пароль');
@@ -126,14 +140,28 @@ export default function LoginPage() {
           </h2>
           <p className="auth-card-sub">
             {resetMode
-              ? 'Укажите email — пришлём ссылку для смены пароля'
+              ? 'Укажите логин или email — получите ссылку для смены пароля'
               : 'Войдите в свой аккаунт'}
           </p>
 
           {error && <div className="auth-alert error">{error}</div>}
           {resetMode && resetSent && (
             <div className="auth-alert success">
-              Ссылка для сброса отправлена на {resetEmail} (демо-режим — письма не отправляются)
+              {resetLink
+                ? <>Ссылка открыта в новом окне для {resetEmail}.</>
+                : <>Пользователь с логином/email «{resetEmail}» не найден.</>}
+              {resetLink && (
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ fontSize: 12, opacity: 0.85 }}>
+                    Если окно не открылось — нажмите кнопку:
+                  </span>
+                  <div style={{ marginTop: 6 }}>
+                    <a className="btn btn-secondary btn-sm" href={resetLink} target="_blank" rel="noopener noreferrer">
+                      Перейти к смене пароля
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -196,14 +224,14 @@ export default function LoginPage() {
           {resetMode && (
             <>
               <div className="field">
-                <label className="field-label">Email</label>
+                <label className="field-label">Логин или email</label>
                 <input
-                  type="email"
+                  type="text"
                   className="input"
                   value={resetEmail}
                   onChange={e => setResetEmail(e.target.value)}
-                  placeholder="ivanov@mail.ru"
-                  autoComplete="email"
+                  placeholder="ivanov или ivanov@mail.ru"
+                  autoComplete="username"
                   autoFocus
                   required
                 />
@@ -213,9 +241,9 @@ export default function LoginPage() {
                 type="submit"
                 className="btn btn-primary"
                 style={{ width: '100%', marginTop: 8 }}
-                disabled={!resetEmail || resetSent}
+                disabled={!resetEmail || resetSent || loading}
               >
-                {resetSent ? 'Ссылка отправлена' : 'Отправить ссылку'}
+                {loading ? <span className="spinner" /> : resetSent ? 'Ссылка открыта' : 'Получить ссылку'}
               </button>
 
               <button
@@ -230,9 +258,16 @@ export default function LoginPage() {
           )}
 
           {!resetMode && (
-            <p className="auth-footer">
-              Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
-            </p>
+            <>
+              <p className="auth-footer">
+                Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
+              </p>
+              <div style={{ textAlign: 'center', marginTop: 14 }}>
+                <Link to="/privacy" style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                  Политика конфиденциальности
+                </Link>
+              </div>
+            </>
           )}
         </motion.form>
 

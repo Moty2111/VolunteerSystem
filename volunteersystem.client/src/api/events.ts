@@ -20,6 +20,9 @@ export const eventsApi = {
     recommended: () =>
         api.get<RecommendedEventItem[]>('/events/recommended').then(r => r.data),
 
+    participants: (eventId: number) =>
+        api.get<EventParticipantRow[]>(`/events/${eventId}/participants`).then(r => r.data),
+
     getComments: (eventId: number) =>
         api.get<EventCommentItem[]>(`/events/${eventId}/comments`).then(r => r.data),
 

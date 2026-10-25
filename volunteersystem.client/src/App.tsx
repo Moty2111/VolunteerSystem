@@ -6,6 +6,9 @@ import Layout from './components/Layout';
 import PageLoader from './components/PageLoader';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 /* Страницы грузим отдельными чанками: начальный бандл сразу тонкий,
    тяжёлые библиотеки (recharts, карты) попадают в бандл только своей страницы. */
@@ -36,6 +39,9 @@ export default function App() {
                     <Routes>
                         <Route path="/login" element={<LoginPage />} />
                         <Route path="/register" element={<RegisterPage />} />
+                        <Route path="/reset-password" element={<ResetPasswordPage />} />
+                        <Route path="/privacy" element={<PrivacyPage />} />
+                        <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
 
                         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                             <Route path="/dashboard" element={<DashboardPage />} />

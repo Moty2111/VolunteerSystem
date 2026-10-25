@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.Json;
 using VolunteerSystem.Server.Data;
 using VolunteerSystem.Server.Dtos.Auth;
@@ -20,13 +21,15 @@ public class AuthController : ControllerBase
     private readonly JwtService _jwt;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(AppDbContext db, JwtService jwt, IWebHostEnvironment env, ILogger<AuthController> logger)
+    public AuthController(AppDbContext db, JwtService jwt, IWebHostEnvironment env, ILogger<AuthController> logger, IConfiguration configuration)
     {
         _db = db;
         _jwt = jwt;
         _env = env;
         _logger = logger;
+        _configuration = configuration;
     }
 
     // POST: /api/auth/login
@@ -53,6 +56,81 @@ public class AuthController : ControllerBase
         var (token, expires) = _jwt.Generate(user);
 
         return Ok(ToResponse(user, token, expires));
+    }
+
+    // POST: /api/auth/forgot-password — запрос ссылки на сброс пароля
+    // В демо-режиме письма не отправляются: ссылка возвращается в ответе (demoResetLink).
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req, CancellationToken ct)
+    {
+        var email = req.Email.Trim();
+
+        // Ищем учётную запись по email волонтёра либо по логину (для служебных аккаунтов)
+        var user = await _db.SystemUsers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u =>
+                (u.volunteer != null && u.volunteer.email == email && u.is_active)
+                || (u.login_name == email && u.is_active), ct);
+
+        // Одинаковый ответ независимо от того, найден ли email, — не раскрываем адреса
+        var message = "Если такой email зарегистрирован, ссылка для сброса отправлена";
+
+        if (user is not null)
+        {
+            var resetToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+            user.password_reset_token = resetToken;
+            user.password_reset_expires = DateTime.Now.AddMinutes(30);
+
+            _db.Attach(user);
+            _db.Entry(user).Property(u => u.password_reset_token).IsModified = true;
+            _db.Entry(user).Property(u => u.password_reset_expires).IsModified = true;
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Запрошен сброс пароля для {Login} (email {Email})", user.login_name, email);
+
+            var clientUrl = _configuration["App:ClientUrl"] ?? $"{Request.Scheme}://{Request.Host}";
+            var demoResetLink = $"{clientUrl}/reset-password?token={resetToken}";
+            return Ok(new { message, demoResetLink });
+        }
+
+        return Ok(new { message });
+    }
+
+    // POST: /api/auth/reset-password — установка нового пароля по токену
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest req, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(req.Token))
+        {
+            var token = req.Token.Trim();
+            var user = await _db.SystemUsers
+                .FirstOrDefaultAsync(u => u.password_reset_token == token && u.is_active, ct);
+
+            if (user is not null && user.password_reset_expires.HasValue && user.password_reset_expires > DateTime.Now)
+            {
+                if (!PasswordPolicy.IsValid(req.NewPassword))
+                    return BadRequest(new { message = PasswordPolicy.Message });
+
+                if (req.NewPassword == user.password_hash)
+                    return BadRequest(new { message = "Новый пароль не должен совпадать со старым" });
+
+                user.password_hash = req.NewPassword; // хранение открытым текстом — требование курсового
+                user.password_reset_token = null;
+                user.password_reset_expires = null;
+                user.must_change_password = false;
+
+                await _db.SaveChangesAsync(ct);
+
+                _logger.LogInformation("Пароль сброшен по ссылке для {Login}", user.login_name);
+                return Ok(new { message = "Пароль успешно обновлён — теперь можно войти" });
+            }
+        }
+
+        return BadRequest(new { message = "Ссылка для сброса недействительна или истекла" });
     }
 
     // POST: /api/auth/register
@@ -219,7 +297,11 @@ public class AuthController : ControllerBase
         if (req.NewPassword == req.CurrentPassword)
             return BadRequest(new { message = "Новый пароль не должен совпадать со старым" });
 
+        if (!PasswordPolicy.IsValid(req.NewPassword))
+            return BadRequest(new { message = PasswordPolicy.Message });
+
         user.password_hash = req.NewPassword; // хранение открытым текстом — требование курсового
+        user.must_change_password = false; // обязательная смена выполнена
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation("Пароль обновлён пользователем {Login}", user.login_name);
@@ -242,6 +324,7 @@ public class AuthController : ControllerBase
         LoginName = user.login_name,
         Role = user.system_role,
         VolunteerId = user.volunteer_id,
-        ExpiresAt = expires
+        ExpiresAt = expires,
+        MustChangePassword = user.must_change_password
     };
 }

@@ -546,7 +546,7 @@ button {
     font-size: 14px;
     font-weight: 500;
     margin-bottom: 3px;
-    transition: all .18s ease;
+    transition: all .32s ease;
     cursor: pointer;
     position: relative;
     text-decoration: none;
@@ -618,6 +618,20 @@ button {
     animation: pulseDot 3.2s ease-in-out infinite;
 }
 
+/* кнопка «Выйти» в меню (под разделом «Мой профиль») — для всех ролей */
+.sidebar-link.sidebar-logout {
+    width: 100%;
+    font-family: inherit;
+    background: transparent;
+    text-align: left;
+    color: var(--text-3);
+}
+
+.sidebar-link.sidebar-logout:hover {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
 .sidebar-user {
     padding: 14px;
     border-top: 1px solid var(--border);
@@ -676,7 +690,7 @@ button {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all .16s ease;
+    transition: all .28s ease;
 }
 
     .icon-btn:hover {
@@ -748,7 +762,7 @@ button {
     color: var(--text-3);
     cursor: pointer;
     font-size: 13px;
-    transition: all .16s ease;
+    transition: all .28s ease;
     margin-left: auto;
 }
 
@@ -923,7 +937,8 @@ button {
     border: 1px solid var(--border);
     border-radius: var(--r-lg);
     overflow: hidden;
-    transition: all .22s ease;
+    transition: transform .35s cubic-bezier(.2,.8,.3,1), box-shadow .35s ease, border-color .35s ease;
+    will-change: transform;
 }
 
     .stat-card:hover {
@@ -1022,7 +1037,7 @@ button {
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
-    transition: background .15s ease;
+    transition: background .26s ease;
 }
 
 .stat-card-more:hover {
@@ -1092,7 +1107,7 @@ tbody td {
 }
 
 tbody tr {
-    transition: background .14s ease, transform .14s ease;
+    transition: background .28s ease, transform .28s ease;
 }
 
     tbody tr:hover {
@@ -1252,7 +1267,7 @@ tbody tr.row-clickable {
     font-weight: 600;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: all .16s ease;
+    transition: all .28s ease;
     white-space: nowrap;
     text-decoration: none;
     font-family: inherit;
@@ -1405,7 +1420,7 @@ tbody tr.row-clickable {
     color: var(--text);
     font-size: 14px;
     font-family: inherit;
-    transition: all .16s ease;
+    transition: all .28s ease;
 }
 
     .input:hover, .select:hover, .textarea:hover {
@@ -1515,7 +1530,7 @@ tbody tr.row-clickable {
     background: transparent;
     color: var(--text-3);
     cursor: pointer;
-    transition: all .16s ease;
+    transition: all .28s ease;
 }
 
     .view-btn:hover {
@@ -1598,7 +1613,7 @@ tbody tr.row-clickable {
     align-items: center;
     justify-content: center;
     padding: 20px;
-    animation: fadeIn .16s ease;
+    animation: fadeIn .3s ease;
 }
 
 .modal {
@@ -1610,7 +1625,7 @@ tbody tr.row-clickable {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: var(--shadow-lg), 0 0 60px color-mix(in srgb, var(--primary) 12%, transparent);
-    animation: slideUp .24s cubic-bezier(0.2, 0.9, 0.3, 1);
+    animation: slideUp .38s cubic-bezier(0.2, 0.9, 0.3, 1);
     position: relative;
     /* свой слой: размытие фона не пересчитывается каждый кадр анимации */
     will-change: transform, opacity;
@@ -2121,7 +2136,7 @@ tbody tr.row-clickable {
     gap: 14px;
     padding: 10px 12px;
     border-radius: var(--r-md);
-    transition: all .16s ease;
+    transition: all .28s ease;
 }
 
     .leader-row:hover {
@@ -2229,7 +2244,7 @@ tbody tr.row-clickable {
     border-radius: var(--r-md);
     border: 1px solid var(--border);
     background: var(--surface-2);
-    transition: all .18s ease;
+    transition: all .32s ease;
     cursor: pointer;
 }
 
@@ -2427,7 +2442,7 @@ tbody tr.row-clickable {
     border: 1px solid var(--border);
     font-size: 12px;
     font-weight: 500;
-    transition: all .16s ease;
+    transition: all .28s ease;
 }
 
     .skill-chip:hover {
@@ -2480,7 +2495,7 @@ tbody tr.row-clickable {
     border: 1px solid color-mix(in srgb, var(--card-accent) 42%, var(--border));
     border-radius: 14px;
     box-shadow: 0 6px 14px -10px color-mix(in srgb, var(--card-accent) 75%, transparent);
-    transition: transform .16s cubic-bezier(.2,.8,.3,1), box-shadow .16s ease, border-color .16s ease;
+    transition: transform .3s cubic-bezier(.2,.8,.3,1), box-shadow .3s ease, border-color .3s ease;
     animation: cardPop .3s cubic-bezier(.2,.9,.3,1.2) both;
 }
 
@@ -2549,7 +2564,7 @@ tbody tr.row-clickable {
     align-items: center;
     justify-content: center;
     opacity: 0;
-    transition: all .15s ease;
+    transition: all .25s ease;
 }
 
 .skill-mini:hover .skill-mini-remove {
@@ -2632,7 +2647,8 @@ tbody tr.row-clickable {
     padding: 18px;
     /* без overflow: hidden — иначе подсказка (cool-tip) внутри карточки обрезается */
     cursor: pointer;
-    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    transition: border-color .3s ease, transform .3s ease, box-shadow .3s ease;
+    will-change: transform;
 }
 
 .vcard:hover,
@@ -2882,7 +2898,7 @@ tbody tr.row-clickable {
     background: var(--surface);
     color: var(--text-2);
     cursor: pointer;
-    transition: border-color .12s ease, color .12s ease, transform .12s ease;
+    transition: border-color .25s ease, color .25s ease, transform .25s ease;
 }
 
 .cal-summary-arrow:hover {
@@ -2985,7 +3001,7 @@ tbody tr.row-clickable {
     cursor: pointer;
     text-align: left;
     font-family: inherit;
-    transition: border-color .12s ease, background .12s ease, transform .12s ease, box-shadow .12s ease;
+    transition: border-color .25s ease, background .25s ease, transform .25s ease, box-shadow .25s ease;
 }
 
 .cal-day:hover {
@@ -3182,7 +3198,7 @@ tbody tr.row-clickable {
     cursor: pointer;
     text-align: left;
     font-family: inherit;
-    transition: border-color .12s ease, transform .12s ease, box-shadow .12s ease;
+    transition: border-color .25s ease, transform .25s ease, box-shadow .25s ease;
 }
 
 .cal-agenda-item:hover {
@@ -3934,7 +3950,7 @@ tbody tr.row-clickable {
     cursor: pointer;
     transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
     transform-style: preserve-3d;
-    transition: transform .14s ease-out, box-shadow .18s ease, border-color .18s ease;
+    transition: transform .32s ease-out, box-shadow .32s ease, border-color .32s ease;
     box-shadow: 0 2px 0 color-mix(in srgb, var(--border) 60%, transparent);
     position: relative;
     will-change: transform;
@@ -4151,7 +4167,7 @@ tbody tr.row-clickable {
     opacity: 0;
     transform: translateY(4px);
     pointer-events: none;
-    transition: opacity .18s ease, transform .18s ease;
+    transition: opacity .3s ease, transform .3s ease;
 }
 
 .event-card:hover .event-card-actions,
@@ -4180,7 +4196,7 @@ tbody tr.row-clickable {
     background: var(--surface);
     color: var(--text-2);
     cursor: pointer;
-    transition: all .15s ease;
+    transition: all .25s ease;
 }
 
     .foot-act:hover {
@@ -4457,7 +4473,7 @@ tbody tr.row-clickable {
     border-radius: 18px;
     padding: 14px 16px;
     overflow: hidden;
-    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+    transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease;
 }
 
     .assign-card::before {
@@ -4640,7 +4656,7 @@ tbody tr.row-clickable {
     align-items: flex-start;
     padding: 14px 6px;
     border-bottom: 1px solid var(--border);
-    transition: background .14s ease;
+    transition: background .28s ease;
     border-radius: 10px;
 }
 
@@ -4754,7 +4770,7 @@ tbody tr.row-clickable {
     background: var(--surface-3);
     border: 1px solid var(--border-2);
     cursor: pointer;
-    transition: background .18s ease, border-color .18s ease;
+    transition: background .3s ease, border-color .3s ease;
     padding: 0;
 }
 
@@ -4815,7 +4831,7 @@ tbody tr.row-clickable {
     gap: 4px;
     position: relative;
     overflow: hidden;
-    transition: transform .16s ease, border-color .16s ease;
+    transition: transform .3s ease, border-color .3s ease;
 }
 
     .profile-stat:hover {
@@ -5086,7 +5102,7 @@ tbody tr.row-clickable {
     padding: 11px 6px;
     border-bottom: 1px solid var(--border);
     border-radius: 10px;
-    transition: background .14s ease;
+    transition: background .28s ease;
 }
 
     .activity-row:last-child {
@@ -5212,7 +5228,7 @@ tbody tr.row-clickable {
     padding: 8px 14px;
     border-radius: var(--r-pill);
     background: color-mix(in srgb, var(--primary) 12%, transparent);
-    transition: all .16s ease;
+    transition: all .28s ease;
 }
 
     .dash-alert-link:hover {
@@ -5390,7 +5406,7 @@ tbody tr.row-clickable {
         font-size: 10.5px;
         font-weight: 600;
         text-decoration: none;
-        transition: color .15s ease, background .15s ease;
+        transition: color .25s ease, background .25s ease;
         min-width: 0;
     }
 
@@ -5429,7 +5445,7 @@ tbody tr.row-clickable {
     justify-content: center;
     cursor: pointer;
     padding: 0;
-    transition: transform .15s ease, box-shadow .15s ease;
+    transition: transform .3s ease, box-shadow .3s ease;
     box-shadow: 0 0 0 0 var(--primary-glow);
 }
 
@@ -5487,7 +5503,7 @@ tbody tr.row-clickable {
     font-family: inherit;
     cursor: pointer;
     text-align: left;
-    transition: background .13s ease, color .13s ease;
+    transition: background .25s ease, color .25s ease;
 }
 
     .avatar-menu-item:hover {
@@ -5565,10 +5581,10 @@ tbody tr.row-clickable {
    ============================================================ */
 
 :root {
-    --dur-fast: .14s;
-    --dur-base: .22s;
-    --dur-slow: .34s;
-    --ease-out: cubic-bezier(.2, .9, .3, 1);
+    --dur-fast: .22s;
+    --dur-base: .3s;
+    --dur-slow: .45s;
+    --ease-out: cubic-bezier(.22, .75, .3, 1);
     --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
 }
 
@@ -5965,7 +5981,7 @@ tbody tr.row-clickable {
     font-size: 13px;
     font-weight: 600;
     color: var(--text-2);
-    transition: all .15s ease;
+    transition: all .25s ease;
     white-space: nowrap;
 }
 
@@ -6052,7 +6068,7 @@ tbody tr.row-clickable {
     border-radius: 14px;
     background: var(--surface-2);
     opacity: 0.72;
-    transition: opacity .15s ease, border-color .15s ease, transform .15s ease;
+    transition: opacity .3s ease, border-color .3s ease, transform .3s ease;
 }
 
 .badge-card.is-earned {
@@ -6249,7 +6265,7 @@ tbody tr.row-clickable {
     background: transparent;
     color: var(--text-3);
     cursor: pointer;
-    transition: background .12s ease, color .12s ease;
+    transition: background .22s ease, color .22s ease;
 }
 
 .comment-delete:hover {
@@ -6326,7 +6342,7 @@ tbody tr.row-clickable {
     background: var(--surface);
     overflow: hidden;
     cursor: pointer;
-    transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+    transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease;
 }
 
 .rec-card:hover {
@@ -6422,7 +6438,7 @@ tbody tr.row-clickable {
    ============================================================ */
 
 .cal-agenda-thumb {
-    transition: transform .18s ease, box-shadow .18s ease;
+    transition: transform .32s ease, box-shadow .32s ease;
 }
 
 .cal-agenda-item:hover .cal-agenda-thumb {
@@ -6436,4 +6452,140 @@ tbody tr.row-clickable {
 
 .cal-day.is-selected:hover {
     transform: translateY(-1px);
+}
+
+/* ============================================================
+   ПЛАВНОСТЬ: медленные мягкие движения (фикс дерганности)
+   ============================================================ */
+
+/* мягкая пульсация иконки алерта (медкнижки и т.п.) */
+.dash-alert-icon.live {
+    animation: alertPulse 3s ease-in-out infinite;
+}
+
+@keyframes alertPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+}
+
+/* лёгкое парение иллюстраций пустых состояний */
+.empty-state-illustration {
+    animation: emptyFloat 6s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes emptyFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+}
+
+/* спарклайн в плашке статистики (карточка часов) */
+.stat-card-spark {
+    height: 34px;
+    margin-top: 12px;
+    opacity: .85;
+    transition: opacity .4s ease, transform .4s cubic-bezier(.2,.8,.3,1);
+    transform-origin: bottom center;
+}
+
+.stat-card:hover .stat-card-spark {
+    opacity: 1;
+    transform: scaleY(1.08);
+}
+
+.stat-card-spark svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+/* плитки «Быстрые разделы» */
+.quick-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.quick-tile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--r-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: transform .3s cubic-bezier(.2,.8,.3,1), border-color .3s ease, box-shadow .3s ease, background .3s ease;
+}
+
+.quick-tile:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    background: var(--surface-2);
+    color: var(--text);
+    box-shadow: 0 10px 22px -12px var(--primary-glow);
+}
+
+.quick-tile svg {
+    color: var(--primary);
+    flex-shrink: 0;
+}
+
+/* «липкий» заголовок модалки при прокрутке длинного содержимого */
+.modal-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--surface);
+}
+
+/* кнопка «Наверх» */
+.to-top {
+    position: fixed;
+    right: 26px;
+    bottom: 26px;
+    z-index: 90;
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--gradient);
+    color: #fff;
+    border: 0;
+    cursor: pointer;
+    box-shadow: 0 12px 30px var(--primary-glow);
+    opacity: 0;
+    transform: translateY(14px) scale(.9);
+    pointer-events: none;
+    transition: opacity .35s ease, transform .35s cubic-bezier(.2,.8,.3,1), box-shadow .35s ease;
+}
+
+.to-top.visible {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+}
+
+.to-top:hover {
+    box-shadow: 0 16px 36px var(--primary-glow);
+    transform: translateY(-2px);
+}
+
+/* плавная смена темы на основных контейнерах */
+body,
+.app-shell,
+.sidebar,
+.main-content,
+.card,
+.topbar,
+.bottom-nav {
+    transition: background-color .45s ease, color .45s ease, border-color .45s ease;
 }

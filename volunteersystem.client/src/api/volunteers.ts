@@ -24,6 +24,9 @@ export const volunteersApi = {
     verifyMedBook: (id: number, data: { approved: boolean; validUntil?: string | null; comment?: string | null }) =>
         api.post<Volunteer>(`/volunteers/${id}/medbook/verify`, data).then(r => r.data),
 
+    updateMedBook: (id: number, data: { validUntil?: string | null; status?: string | null; comment?: string | null }) =>
+        api.post<Volunteer>(`/volunteers/${id}/medbook/update`, data).then(r => r.data),
+
     fetchMedBookScan: (id: number) =>
         api.get(`/volunteers/${id}/medbook/scan`, { responseType: 'blob' }).then(r => r.data as Blob),
 

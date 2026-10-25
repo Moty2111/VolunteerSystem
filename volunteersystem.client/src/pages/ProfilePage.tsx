@@ -8,6 +8,7 @@ import { skillsApi, type VolunteerSkill } from '../api/skills';
 import { Avatar, Badge, Skeleton } from '../components/ui';
 import { getLevel } from '../utils/level';
 import { plural } from '../utils/format';
+import { isValidPassword, PASSWORD_REQUIREMENTS } from '../utils/password';
 import {
     User, Mail, Phone, MapPin, Save, Lock, ShieldCheck, AtSign, CalendarDays,
     Clock, CalendarCheck, Sparkles, Award, Activity, HeartPulse, BadgeCheck,
@@ -173,8 +174,8 @@ export default function ProfilePage() {
             toast.error('Пароли не совпадают');
             return;
         }
-        if (pwForm.next.length < 6) {
-            toast.error('Минимум 6 символов');
+        if (!isValidPassword(pwForm.next)) {
+            toast.error(PASSWORD_REQUIREMENTS);
             return;
         }
         setChangingPw(true);
@@ -271,12 +272,12 @@ export default function ProfilePage() {
                     type="password"
                     className="input"
                     autoComplete="new-password"
-                    minLength={6}
+                    minLength={8}
                     value={pwForm.next}
                     onChange={e => setPwForm({ ...pwForm, next: e.target.value })}
                     required
                 />
-                <div className="field-hint">Пароли хранятся в системе открытым текстом — как требуется в курсовом проекте.</div>
+                <div className="field-hint">{PASSWORD_REQUIREMENTS}</div>
             </div>
 
             <div className="field">
@@ -285,7 +286,7 @@ export default function ProfilePage() {
                     type="password"
                     className="input"
                     autoComplete="new-password"
-                    minLength={6}
+                    minLength={8}
                     value={pwForm.confirm}
                     onChange={e => setPwForm({ ...pwForm, confirm: e.target.value })}
                     required

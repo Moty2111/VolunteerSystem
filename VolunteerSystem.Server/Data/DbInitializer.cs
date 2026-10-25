@@ -104,6 +104,8 @@ public static class DbInitializer
 
         await ApplyMedBookUpgradeAsync(connString, logger);
 
+        await ApplyPasswordResetUpgradeAsync(connString, logger);
+
         await using (var mark = new SqlCommand(
             "IF NOT EXISTS (SELECT 1 FROM SeedHistory WHERE version = @version) " +
             "INSERT INTO SeedHistory (version) VALUES (@version)", conn))
@@ -226,7 +228,54 @@ public static class DbInitializer
         logger.LogInformation("Проведено обновление медкнижки до версии 4");
     }
 
-    private const int CurrentDemoDataVersion = 5;
+    private static async Task ApplyPasswordResetUpgradeAsync(string connString, ILogger logger)
+    {
+        await using var conn = new SqlConnection(connString);
+        await conn.OpenAsync();
+
+        var columnsToAdd = new[]
+        {
+            "password_reset_token NVARCHAR(100) NULL",
+            "password_reset_expires DATETIME NULL",
+            "must_change_password BIT NOT NULL DEFAULT 0"
+        };
+
+        foreach (var def in columnsToAdd)
+        {
+            // Прямой ALTER + игнорирование ошибки «колонка уже существует» (2705)
+            await using var cmd = new SqlCommand("ALTER TABLE SystemUser ADD " + def, conn);
+            try
+            {
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex) when (ex.Number == 2705)
+            {
+                logger.LogInformation("Колонка в SystemUser уже существует: {Def}", def);
+            }
+            catch (SqlException ex)
+            {
+                logger.LogWarning(ex, "Ошибка при добавлении колонки в SystemUser: {Def}", def);
+            }
+        }
+
+        // На случай, если колонка была добавлена без DEFAULT — проставляем нули
+        await using (var upd = new SqlCommand(
+            "UPDATE SystemUser SET must_change_password = 0 WHERE must_change_password IS NULL", conn))
+        {
+            try
+            {
+                await upd.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                logger.LogWarning(ex, "Ошибка при обратной заливке must_change_password");
+            }
+        }
+
+        logger.LogInformation("Проведено обновление парольной политики до версии 6");
+    }
+
+    private const int CurrentDemoDataVersion = 7;
 
     /// <summary>БД считается незаполненной, если в ней нет ни ролей, ни пользователей.</summary>
     private static async Task<bool> IsEmptyAsync(string connString, ILogger logger)
@@ -367,6 +416,9 @@ public static class DbInitializer
                 )),
             is_active     BIT           NOT NULL DEFAULT 1,
             created_at    DATETIME      NOT NULL DEFAULT GETDATE(),
+            password_reset_token   NVARCHAR(100) NULL,
+            password_reset_expires DATETIME      NULL,
+            must_change_password   BIT           NOT NULL DEFAULT 0,
             FOREIGN KEY (volunteer_id) REFERENCES Volunteer(volunteer_id) ON DELETE SET NULL
         );
         GO

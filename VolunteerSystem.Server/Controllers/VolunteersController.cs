@@ -330,6 +330,44 @@ public class VolunteersController : ControllerBase
         return Ok(ToDto(v));
     }
 
+    // POST: /api/volunteers/5/medbook/update — обновление данных медкнижки (админ/менеджер)
+    [HttpPost("{id:int}/medbook/update")]
+    [Authorize(Roles = "Администратор,Менеджер")]
+    public async Task<ActionResult<VolunteerDto>> UpdateMedBook(int id, [FromBody] UpdateMedBookRequest dto, CancellationToken ct)
+    {
+        var v = await _db.Volunteers.FirstOrDefaultAsync(x => x.volunteer_id == id, ct);
+        if (v is null) return NotFound(new { message = "Волонтёр не найден" });
+
+        var status = dto.Status ?? "Не загружена";
+        var allowed = new[] { "Не загружена", "На проверке", "Подтверждена", "Отклонена", "Просрочена" };
+        if (!allowed.Contains(status))
+            return BadRequest(new { message = "Некорректный статус медкнижки" });
+
+        v.med_book_valid_until = dto.ValidUntil;
+        v.med_book_status = status;
+
+        if (status == "Подтверждена")
+        {
+            if (v.med_book_valid_until is null)
+                return BadRequest(new { message = "Укажите дату действия медкнижки" });
+            if (v.med_book_valid_until.Value < DateOnly.FromDateTime(DateTime.Today))
+                return BadRequest(new { message = "Дата окончания медкнижки уже в прошлом" });
+
+            v.med_book_verified_at = DateTime.Now;
+            v.med_book_verified_by = GetUserId();
+            v.med_book_notes = string.IsNullOrWhiteSpace(dto.Comment) ? null : dto.Comment.Trim();
+        }
+        else
+        {
+            v.med_book_verified_at = null;
+            v.med_book_verified_by = null;
+            v.med_book_notes = string.IsNullOrWhiteSpace(dto.Comment) ? null : dto.Comment.Trim();
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(ToDto(v));
+    }
+
     // === Helpers ===
 
     /// <summary>id волонтёра из токена; 0 — если такого claim нет или он неверен.</summary>

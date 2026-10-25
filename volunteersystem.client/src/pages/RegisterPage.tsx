@@ -267,7 +267,7 @@ export default function RegisterPage() {
               {agree && <Check size={12} color="#fff" />}
             </span>
             <input type="checkbox" checked={agree} onChange={e => { setError(''); setAgree(e.target.checked); }} style={{ display: 'none' }} />
-            <span>Я согласен(-на) на обработку персональных данных в соответствии с ФЗ-152 и политикой конфиденциальности</span>
+            <span>Я согласен(-на) на обработку персональных данных в соответствии с ФЗ-152 и <Link to="/privacy">политикой конфиденциальности</Link></span>
           </label>
 
           <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%', marginTop: 20 }}>

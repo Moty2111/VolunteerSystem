@@ -12,7 +12,7 @@ import ThemeToggle from './ThemeToggle';
 import {
     LayoutDashboard, Users, Calendar, CheckSquare, Award, Briefcase,
     BarChart3, LogOut, ChevronsLeft, ChevronsRight, UserCircle, Bell,
-    CalendarDays, History, UserCog, Target
+    CalendarDays, History, UserCog, Target, ArrowUp
 } from 'lucide-react';
 
 function SidebarSection({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
@@ -32,6 +32,7 @@ export default function Layout() {
     const [searchOpen, setSearchOpen] = useState(false);
     const [eventCount, setEventCount] = useState<number | null>(null);
     const [unread, setUnread] = useState(() => notifStore.unread);
+    const [showTop, setShowTop] = useState(false);
     const mainRef = useRef<HTMLElement>(null);
 
     const isAdmin = user?.role === 'Администратор';
@@ -72,6 +73,14 @@ export default function Layout() {
     }, [location.pathname]);
 
     useEffect(() => notifStore.sub(setUnread), []);
+
+    /* кнопка «Наверх» — показываем после заметной прокрутки */
+    useEffect(() => {
+        const onScroll = () => setShowTop(window.scrollY > 420);
+        onScroll();
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
 
     const handleLogout = () => { logout(); navigate('/login'); };
 
@@ -234,6 +243,14 @@ data-tip = "Развернуть меню"
                 <UserCircle />
                 < span className = "hide-collapsed" > Мой профиль </span>
                     </NavLink>
+            <button
+                type="button"
+                className="sidebar-link sidebar-logout"
+                onClick={handleLogout}
+            >
+                <LogOut />
+                <span className="hide-collapsed">Выйти</span>
+            </button>
                     </nav>
 
             < div className = "sidebar-user" >
@@ -252,15 +269,6 @@ data-tip = "Развернуть меню"
             )
 }
 </div>
-
-    < button
-className = "btn btn-ghost btn-sm"
-style = {{ width: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}
-onClick = { handleLogout }
-    >
-    <LogOut size={ 15 } />
-{ !collapsed && <span>Выйти </span> }
-</button>
     </div>
     </aside>
 
@@ -284,7 +292,7 @@ sidebarCollapsed = { collapsed }
 }
     animate = {{ opacity: 1, y: 0 }}
 exit = {{ opacity: 0, y: -8 }}
-transition = {{ duration: 0.18, ease: 'easeOut' }}
+transition = {{ duration: 0.4, ease: [0.22, 0.75, 0.3, 1] }}
         >
     <Outlet />
         </motion.div>
@@ -293,6 +301,15 @@ transition = {{ duration: 0.18, ease: 'easeOut' }}
         </main>
 
         < BottomNav />
+
+        <button
+            type="button"
+            className={`to-top${showTop ? ' visible' : ''}`}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            aria-label="Наверх"
+        >
+            <ArrowUp size={20} />
+        </button>
 
         < CommandPalette open = { searchOpen } onClose = {() => setSearchOpen(false)} />
             </div>

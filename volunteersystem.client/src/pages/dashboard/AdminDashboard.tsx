@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { reportsApi } from '../../api/reports';
@@ -9,13 +9,15 @@ import type { EventItem, Assignment, Volunteer } from '../../types';
 import { StatCard } from '../../components/ui';
 import { formatHours, plural } from '../../utils/format';
 import {
-    Users, Clock, Briefcase, TrendingUp, Plus, Sparkles, UserCheck, Award
+    Users, Clock, Briefcase, TrendingUp, Plus, Sparkles, UserCheck, Award,
+    Calendar, History, UserCog, BarChart3
 } from 'lucide-react';
 import {
     Hero, MonthlyHoursCard, EventsStatusCard, UpcomingCard, MedAlert,
-    ActivityCard, LeadersCard, greeting, calcMedIssues,
+    ActivityCard, LeadersCard, greeting, calcMedIssues, calcMonthly,
     type VolunteerSummaryRow
 } from './common';
+import AdminStatDetailsModal, { type AdminStatDetailKind } from './AdminStatDetailsModal';
 
 export default function AdminDashboard() {
     const { user } = useAuth();
@@ -27,6 +29,7 @@ export default function AdminDashboard() {
     const [partners, setPartners] = useState<unknown[]>([]);
     const [assignments, setAssignments] = useState<Assignment[]>([]);
     const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
+    const [detailKind, setDetailKind] = useState<AdminStatDetailKind | null>(null);
 
     useEffect(() => {
         (async () => {
@@ -48,6 +51,27 @@ export default function AdminDashboard() {
         })();
     }, []);
 
+    /* автообновление данных каждые 30 секунд (без сброса состояния загрузки) */
+    useEffect(() => {
+        const timer = window.setInterval(async () => {
+            try {
+                const [s, e, p, a, v] = await Promise.all([
+                    reportsApi.volunteerSummary() as Promise<VolunteerSummaryRow[]>,
+                    eventsApi.getAll(),
+                    reportsApi.partnerReport() as Promise<unknown[]>,
+                    assignmentsApi.getAll(),
+                    volunteersApi.getAll()
+                ]);
+                setSummary(s);
+                setEvents(e);
+                setPartners(p);
+                setAssignments(a);
+                setVolunteers(v);
+            } catch { /* ignore */ }
+        }, 30000);
+        return () => window.clearInterval(timer);
+    }, []);
+
     const stats = useMemo(() => {
         const totalHours = summary.reduce((s, r) => s + Number(r.total_hours || 0), 0);
         const totalParticipations = summary.reduce((s, r) => s + Number(r.events_count || 0), 0);
@@ -67,6 +91,11 @@ export default function AdminDashboard() {
     );
 
     const medIssues = useMemo(() => calcMedIssues(volunteers), [volunteers]);
+
+    const monthlyHours = useMemo(
+        () => calcMonthly(assignments).buckets.map(b => b.hours),
+        [assignments]
+    );
 
     return (
         <div>
@@ -97,6 +126,7 @@ export default function AdminDashboard() {
                     icon={<Users size={20} />}
                     color="var(--primary)"
                     onClick={() => navigate('/volunteers')}
+                    onDetails={() => setDetailKind('volunteers')}
                     delay={0}
                 />
                 <StatCard
@@ -105,6 +135,7 @@ export default function AdminDashboard() {
                     icon={<TrendingUp size={20} />}
                     color="#7c5cff"
                     onClick={() => navigate('/assignments')}
+                    onDetails={() => setDetailKind('participations')}
                     delay={0.06}
                 />
                 <StatCard
@@ -113,7 +144,9 @@ export default function AdminDashboard() {
                     icon={<Clock size={20} />}
                     color="var(--success)"
                     onClick={() => navigate('/reports')}
+                    onDetails={() => setDetailKind('hours')}
                     delay={0.12}
+                    spark={monthlyHours}
                 />
                 <StatCard
                     label="Партнёров"
@@ -121,6 +154,7 @@ export default function AdminDashboard() {
                     icon={<Briefcase size={20} />}
                     color="var(--warning)"
                     onClick={() => navigate('/partners')}
+                    onDetails={() => setDetailKind('partners')}
                     delay={0.18}
                 />
             </div>
@@ -128,8 +162,8 @@ export default function AdminDashboard() {
             {!loading && <MedAlert expired={medIssues.expired} expiring={medIssues.expiring} />}
 
             <div className="dash-grid">
-                <MonthlyHoursCard assignments={assignments} loading={loading} />
-                <EventsStatusCard events={events} loading={loading} />
+                <MonthlyHoursCard assignments={assignments} loading={loading} onDetails={() => setDetailKind('hours')} />
+                <EventsStatusCard events={events} loading={loading} detailButton />
             </div>
 
             <div className="dash-grid-wide">
@@ -142,18 +176,24 @@ export default function AdminDashboard() {
                     <div className="card-header">
                         <h3 className="card-title"><UserCheck size={16} /> Быстрые разделы</h3>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/audit')}>
-                            Журнал аудита
+                    <div className="quick-tiles">
+                        <button className="quick-tile" onClick={() => navigate('/audit')}>
+                            <History size={18} /> Журнал аудита
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/users')}>
-                            Учётные записи
+                        <button className="quick-tile" onClick={() => navigate('/users')}>
+                            <UserCog size={18} /> Учётные записи
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/calendar')}>
-                            Календарь
+                        <button className="quick-tile" onClick={() => navigate('/calendar')}>
+                            <Calendar size={18} /> Календарь
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/skills')}>
-                            <Award size={14} /> Навыки
+                        <button className="quick-tile" onClick={() => navigate('/skills')}>
+                            <Award size={18} /> Навыки
+                        </button>
+                        <button className="quick-tile" onClick={() => navigate('/reports')}>
+                            <BarChart3 size={18} /> Отчёты
+                        </button>
+                        <button className="quick-tile" onClick={() => navigate('/volunteers')}>
+                            <Users size={18} /> Волонтёры
                         </button>
                     </div>
                 </div>
@@ -162,6 +202,18 @@ export default function AdminDashboard() {
             <div style={{ marginTop: 18 }}>
                 <ActivityCard loading={loading} />
             </div>
+
+            {detailKind && (
+                <AdminStatDetailsModal
+                    kind={detailKind}
+                    onClose={() => setDetailKind(null)}
+                    volunteers={summary}
+                    partners={partners}
+                    assignments={assignments}
+                    events={events}
+                    totalHours={Number(stats.hours) || 0}
+                />
+            )}
         </div>
     );
 }

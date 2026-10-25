@@ -1006,6 +1006,34 @@ button {
     font-size: 12px;
 }
 
+/* «Подробнее» в плашке дашборда: не должна срабатывать как клик по всей карточке */
+.stat-card-more {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    margin-right: -8px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--accent-color, var(--primary));
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .15s ease;
+}
+
+.stat-card-more:hover {
+    background: color-mix(in srgb, var(--accent-color, var(--primary)) 12%, transparent);
+}
+
+.stat-card-more:focus-visible {
+    outline: 2px solid var(--accent-color, var(--primary));
+    outline-offset: 2px;
+}
+
 .trend {
     display: inline-flex;
     align-items: center;

@@ -1,6 +1,6 @@
 ﻿import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 
 
 interface Props {
@@ -11,9 +11,11 @@ interface Props {
   trend?: { direction: 'up' | 'down'; value: string; text?: string };
   delay?: number;
   onClick?: () => void;
+  /** Кнопка «Подробнее» в подвале карточки. */
+  onDetails?: () => void;
 }
 
-export default function StatCard({ label, value, icon, color, trend, delay = 0, onClick }: Props) {
+export default function StatCard({ label, value, icon, color, trend, delay = 0, onClick, onDetails }: Props) {
   const accent = color || 'var(--primary)';
   /* длинные текстовые значения (уровни, статусы) ужимаются, чтобы не вылезать за карточку */
   const isText = typeof value === 'string' && value.trim().length > 4 && !/^[\d\s.,%чa-zA-Z-]*$/.test(value.trim());
@@ -41,14 +43,27 @@ export default function StatCard({ label, value, icon, color, trend, delay = 0, 
         {icon && <div className="stat-card-icon">{icon}</div>}
       </div>
       <div className={`stat-card-value num${isText ? ' is-text' : ''}`}>{value}</div>
-      {trend && (
+      {(trend || onDetails) && (
         <div className="stat-card-foot">
-          <span className={`trend ${trend.direction}`}>
-            {trend.direction === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-            {trend.value}
-          </span>
-
-          {trend.text && <span className="trend-text">{trend.text}</span>}
+          {trend && (
+            <>
+              <span className={`trend ${trend.direction}`}>
+                {trend.direction === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                {trend.value}
+              </span>
+              {trend.text && <span className="trend-text">{trend.text}</span>}
+            </>
+          )}
+          {onDetails && (
+            <button
+              type="button"
+              className="stat-card-more"
+              onClick={e => { e.stopPropagation(); onDetails(); }}
+              onKeyDown={e => e.stopPropagation()}
+            >
+              Подробнее <ArrowRight size={12} />
+            </button>
+          )}
         </div>
       )}
     </motion.div>

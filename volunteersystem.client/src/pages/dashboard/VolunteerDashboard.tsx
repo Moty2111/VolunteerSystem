@@ -21,6 +21,7 @@ import {
     AlertTriangle, ArrowRight, UserPlus, CheckCircle2, ShieldCheck, Shield
 } from 'lucide-react';
 import { Hero, MonthlyHoursCard, greeting, calcUpcoming, type VolunteerSummaryRow } from './common';
+import StatDetailsModal, { type StatDetailKind } from './StatDetailsModal';
 
 const TYPE_POSTERS: Record<number, string> = {
     1: posterSocial, 2: posterEco, 3: posterCulture,
@@ -42,6 +43,7 @@ export default function VolunteerDashboard() {
     const [me, setMe] = useState<Volunteer | null>(null);
     const [skills, setSkills] = useState<VolunteerSkill[]>([]);
     const [recommended, setRecommended] = useState<RecommendedEventItem[]>([]);
+    const [statDetail, setStatDetail] = useState<StatDetailKind | null>(null);
 
     const volunteerId = user?.volunteerId ?? null;
 
@@ -146,6 +148,7 @@ export default function VolunteerDashboard() {
                     icon={<Clock size={20} />}
                     color="var(--success)"
                     onClick={() => navigate('/my-progress')}
+                    onDetails={() => setStatDetail('hours')}
                     delay={0}
                 />
                 <StatCard
@@ -154,6 +157,7 @@ export default function VolunteerDashboard() {
                     icon={<CalendarCheck size={20} />}
                     color="var(--primary)"
                     onClick={() => navigate('/my-assignments')}
+                    onDetails={() => setStatDetail('assignments')}
                     delay={0.06}
                 />
                 <StatCard
@@ -162,6 +166,7 @@ export default function VolunteerDashboard() {
                     icon={<Award size={20} />}
                     color="#7c5cff"
                     onClick={() => navigate('/my-skills')}
+                    onDetails={() => setStatDetail('skills')}
                     delay={0.12}
                 />
                 <StatCard
@@ -170,9 +175,22 @@ export default function VolunteerDashboard() {
                     icon={<Trophy size={20} />}
                     color="var(--warning)"
                     onClick={() => navigate('/my-progress')}
+                    onDetails={() => setStatDetail('level')}
                     delay={0.18}
                 />
             </div>
+
+            {statDetail && (
+                <StatDetailsModal
+                    kind={statDetail}
+                    onClose={() => setStatDetail(null)}
+                    assignments={assignments}
+                    events={events}
+                    skills={skills}
+                    totalHours={totalHours}
+                    level={level}
+                />
+            )}
 
             {!loading && me && medIssue !== 'ok' && (
                 <div className="dash-alert">

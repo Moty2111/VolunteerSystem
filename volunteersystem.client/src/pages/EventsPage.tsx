@@ -150,20 +150,43 @@ export default function EventsPage() {
 
     useEffect(() => { load(); }, []);
 
-    /* Автооткрытие карточки события: из ?focus=<id> или location.state.focus */
+    /* Автооткрытие карточки события: из ?focus=<id> или location.state.focus.
+       Параметры НЕ очищаем сразу: иначе навигация/перемонтирование страницы
+       успевает «убить» компонент раньше, чем придёт ответ API, и модалка
+       не открывается. Очищаем только при закрытии модалки. */
     useEffect(() => {
         const fromQuery = Number(searchParams.get('focus'));
         const fromState = (location.state as { focus?: number } | null)?.focus;
         const focus = Number.isFinite(fromQuery) && fromQuery > 0 ? fromQuery : fromState;
         if (!focus || focus <= 0) return;
+
+        // Событие уже загружено в список — открываем сразу, без запроса.
+        const cached = items.find(e => e.eventId === focus);
+        if (cached) { setDetails(cached); return; }
+
+        let cancelled = false;
         eventsApi.getById(focus)
-            .then(e => setDetails(e))
+            .then(e => { if (!cancelled) setDetails(e); })
             .catch(() => { /* событие недоступно — игнорируем */ });
-        // очищаем параметры, чтобы повторный клик сработал
-        if (searchParams.get('focus')) setSearchParams({}, { replace: true });
-        else navigate(location.pathname, { replace: true, state: null });
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [location]);
+    }, [location, items]);
+
+    /** Закрыть карточку события и убрать ?focus/state, чтобы ссылка не «залипала». */
+    const closeDetails = () => {
+        setDetails(null);
+        setComments([]);
+        const hasFocus = searchParams.has('focus')
+            || (location.state as { focus?: number } | null)?.focus != null;
+        if (!hasFocus) return;
+        const next = new URLSearchParams(searchParams);
+        next.delete('focus');
+        const search = next.toString();
+        navigate(
+            `${location.pathname}${search ? `?${search}` : ''}`,
+            { replace: true, state: null }
+        );
+    };
 
     useEffect(() => {
         if (!details) return;
@@ -265,7 +288,7 @@ export default function EventsPage() {
         try {
             await assignmentsApi.create({ volunteerId: user.volunteerId, eventId, roleId: 6 });
             toast.success('Вы успешно записаны!');
-            setDetails(null);
+            closeDetails();
             await load();
         } catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
@@ -291,7 +314,7 @@ export default function EventsPage() {
 
     const handleDelete = async (id: number) => {
         if (!confirm('Удалить мероприятие?')) return;
-        try { await eventsApi.remove(id); toast.success('Удалено'); setDetails(null); await load(); }
+        try { await eventsApi.remove(id); toast.success('Удалено'); closeDetails(); await load(); }
         catch (e: unknown) {
             const err = e as { response?: { data?: { message?: string } } };
             toast.error(err.response?.data?.message || 'Ошибка');
@@ -538,12 +561,12 @@ onMouseLeave = {(ev) => {
 <Modal
         open={ !!details }
 title = { details?.eventName || ''}
-onClose = {() => setDetails(null)}
+onClose = {closeDetails}
 wide
 footer = {
     details && (
         <>
-        <button className="btn btn-ghost" onClick = {() => setDetails(null)}> Закрыть </button>
+        <button className="btn btn-ghost" onClick = {closeDetails}> Закрыть </button>
 {
     user?.role === 'Администратор' && (
         <button className="btn btn-danger" onClick = {() => handleDelete(details.eventId)
